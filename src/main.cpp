@@ -165,11 +165,11 @@ int main() {
 
     // load models
     // -----------
-    Model ourModel("resources/objects/backpack/backpack.obj");
+    Model ourModel("resources/objects/wheelchair/kurumaisu.unity_1.obj");
     ourModel.SetShaderTextureNamePrefix("material.");
 
     PointLight& pointLight = programState->pointLight;
-    pointLight.position = glm::vec3(4.0f, 4.0, 0.0);
+    pointLight.position = glm::vec3(0.0f, 4.0, 0.0);
     pointLight.ambient = glm::vec3(0.1, 0.1, 0.1);
     pointLight.diffuse = glm::vec3(0.6, 0.6, 0.6);
     pointLight.specular = glm::vec3(1.0, 1.0, 1.0);
@@ -331,8 +331,10 @@ void DrawImGui(ProgramState *programState) {
         ImGui::End();
     }
 
+    glViewport(0, 0, 256, 256);
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
 }
 
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods) {
