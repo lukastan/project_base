@@ -27,8 +27,8 @@ void processInput(GLFWwindow *window);
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods);
 
 // settings
-const unsigned int SCR_WIDTH = 800;
-const unsigned int SCR_HEIGHT = 600;
+const unsigned int SCR_WIDTH = 1920;
+const unsigned int SCR_HEIGHT = 1080;
 
 // camera
 
@@ -60,7 +60,7 @@ struct ProgramState {
     float backpackScale = 1.0f;
     PointLight pointLight;
     ProgramState()
-            : camera(glm::vec3(0.0f, 0.0f, 3.0f)) {}
+            : camera(glm::vec3(0.0f, 0.0f, 0.0f)) {}
 
     void SaveToFile(std::string filename);
 
@@ -137,7 +137,7 @@ int main() {
     }
 
     // tell stb_image.h to flip loaded texture's on the y-axis (before loading model).
-    stbi_set_flip_vertically_on_load(true);
+    // stbi_set_flip_vertically_on_load(true);
 
     programState = new ProgramState;
     programState->LoadFromFile("resources/program_state.txt");
@@ -165,18 +165,21 @@ int main() {
 
     // load models
     // -----------
-    Model ourModel("resources/objects/wheelchair/kurumaisu.unity_1.obj");
-    ourModel.SetShaderTextureNamePrefix("material.");
+    stbi_set_flip_vertically_on_load(false);
+    Model room("resources/objects/room/room.obj");
+    room.SetShaderTextureNamePrefix("material.");
+    Model bed("resources/objects/bed/bed.obj");
+    bed.SetShaderTextureNamePrefix(".material");
 
     PointLight& pointLight = programState->pointLight;
-    pointLight.position = glm::vec3(0.0f, 4.0, 0.0);
+    pointLight.position = glm::vec3(0.0f, 2.0f, 0.0f);
     pointLight.ambient = glm::vec3(0.1, 0.1, 0.1);
-    pointLight.diffuse = glm::vec3(0.6, 0.6, 0.6);
-    pointLight.specular = glm::vec3(1.0, 1.0, 1.0);
+    pointLight.diffuse = glm::vec3(0.8, 0.8, 0.8);
+    pointLight.specular = glm::vec3(0.5, 0.5, 0.5);
 
     pointLight.constant = 1.0f;
-    pointLight.linear = 0.09f;
-    pointLight.quadratic = 0.032f;
+    pointLight.linear = 0.5f;
+    pointLight.quadratic = 0.5f;
 
 
 
@@ -202,9 +205,14 @@ int main() {
         glClearColor(programState->clearColor.r, programState->clearColor.g, programState->clearColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+//        glm::mat4 matrix_room = glm::mat4(1.0f);
+//        matrix_room = glm::scale(matrix_room, glm::vec3(4.0f, 4.0f, 1.0f));
+//        matrix_room = glm::rotate(matrix_room, glm::radians(45.0f), glm::vec3(0, 0, 1.0f));
+//        matrix_room = glm::translate(matrix_room, glm::vec3(-10.0f, 10.0f, 0.0f));
+
         // don't forget to enable shader before setting uniforms
         ourShader.use();
-        pointLight.position = glm::vec3(4.0 * cos(currentFrame), 4.0f, 4.0 * sin(currentFrame));
+        //pointLight.position = glm::vec3(4.0 * cos(currentFrame), 4.0f, 4.0 * sin(currentFrame));
         ourShader.setVec3("pointLight.position", pointLight.position);
         ourShader.setVec3("pointLight.ambient", pointLight.ambient);
         ourShader.setVec3("pointLight.diffuse", pointLight.diffuse);
@@ -214,6 +222,7 @@ int main() {
         ourShader.setFloat("pointLight.quadratic", pointLight.quadratic);
         ourShader.setVec3("viewPosition", programState->camera.Position);
         ourShader.setFloat("material.shininess", 32.0f);
+
         // view/projection transformations
         glm::mat4 projection = glm::perspective(glm::radians(programState->camera.Zoom),
                                                 (float) SCR_WIDTH / (float) SCR_HEIGHT, 0.1f, 100.0f);
@@ -222,17 +231,20 @@ int main() {
         ourShader.setMat4("view", view);
 
         // render the loaded model
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model,
-                               programState->backpackPosition); // translate it down so it's at the center of the scene
-        model = glm::scale(model, glm::vec3(programState->backpackScale));    // it's a bit too big for our scene, so scale it down
-        ourShader.setMat4("model", model);
-        ourModel.Draw(ourShader);
+        glm::mat4 bed_model = glm::mat4(1.0f);
+        bed_model = glm::scale(bed_model, glm::vec3(programState->backpackScale));    // it's a bit too big for our scene, so scale it down
+        bed_model = glm::rotate(bed_model, glm::radians(-90.0f), glm::vec3(0, 1.0f, 0));
+        bed_model = glm::translate(bed_model,glm::vec3(0.0f, 0.0f, 0.5f)); // translate it down so it's at the center of the scene
+        ourShader.setMat4("model", bed_model);
+        bed.Draw(ourShader);
+
+        glm::mat4 room_model = glm::mat4(1.0f);
+        room_model = glm::scale(room_model, glm::vec3(31.0f, 31.0f, 31.0f));
+        ourShader.setMat4("model", room_model);
+        room.Draw(ourShader);
 
         if (programState->ImGuiEnabled)
             DrawImGui(programState);
-
-
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
