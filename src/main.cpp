@@ -166,10 +166,18 @@ int main() {
     // load models
     // -----------
     stbi_set_flip_vertically_on_load(false);
+
     Model room("resources/objects/room/room.obj");
     room.SetShaderTextureNamePrefix("material.");
+
     Model bed("resources/objects/bed/bed.obj");
     bed.SetShaderTextureNamePrefix(".material");
+
+    Model thing("resources/objects/thing/thing.obj");
+    thing.SetShaderTextureNamePrefix(".material");
+
+    Model ceiling("resources/objects/ceiling/ceiling.obj");
+    ceiling.SetShaderTextureNamePrefix(".material");
 
     PointLight& pointLight = programState->pointLight;
     pointLight.position = glm::vec3(0.0f, 2.0f, 0.0f);
@@ -181,10 +189,13 @@ int main() {
     pointLight.linear = 0.5f;
     pointLight.quadratic = 0.5f;
 
-
-
     // draw in wireframe
     //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+
+    // constants for light flickering
+    int lightOffFrameCount = 0;
+    int flickerOccurenceFrequency = 16;
+    int flickerFrequency = 1;
 
     // render loop
     // -----------
@@ -194,6 +205,8 @@ int main() {
         float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+
+        int lightOffCond = (int(currentFrame) % flickerOccurenceFrequency == 0);
 
         // input
         // -----
@@ -213,6 +226,14 @@ int main() {
         // don't forget to enable shader before setting uniforms
         ourShader.use();
         //pointLight.position = glm::vec3(4.0 * cos(currentFrame), 4.0f, 4.0 * sin(currentFrame));
+        if(lightOffCond && lightOffFrameCount < flickerFrequency) {
+            pointLight.position = glm::vec3(0.0f, -20.0f, 0.0f);
+            lightOffFrameCount++;
+        }
+        else {
+            pointLight.position = glm::vec3(0.0f, 2.0f, 0.0f);
+            lightOffFrameCount = 0;
+        }
         ourShader.setVec3("pointLight.position", pointLight.position);
         ourShader.setVec3("pointLight.ambient", pointLight.ambient);
         ourShader.setVec3("pointLight.diffuse", pointLight.diffuse);
@@ -231,17 +252,35 @@ int main() {
         ourShader.setMat4("view", view);
 
         // render the loaded model
+
+        // bed model
         glm::mat4 bed_model = glm::mat4(1.0f);
         bed_model = glm::scale(bed_model, glm::vec3(programState->backpackScale));    // it's a bit too big for our scene, so scale it down
         bed_model = glm::rotate(bed_model, glm::radians(-90.0f), glm::vec3(0, 1.0f, 0));
-        bed_model = glm::translate(bed_model,glm::vec3(0.0f, 0.0f, 0.5f)); // translate it down so it's at the center of the scene
+        bed_model = glm::translate(bed_model,glm::vec3(0.0f, 0.0f, 1.0f)); // translate it down so it's at the center of the scene
         ourShader.setMat4("model", bed_model);
         bed.Draw(ourShader);
 
+        // room model
         glm::mat4 room_model = glm::mat4(1.0f);
-        room_model = glm::scale(room_model, glm::vec3(31.0f, 31.0f, 31.0f));
+        room_model = glm::scale(room_model, glm::vec3(35.0f, 35.0f, 35.0f));
         ourShader.setMat4("model", room_model);
         room.Draw(ourShader);
+
+        // thing model
+        glm::mat4 thing_model = glm::mat4(1.0f);
+        thing_model = glm::scale(thing_model, glm::vec3(0.85f, 0.85f, 0.85f));
+        thing_model = glm::rotate(thing_model, glm::radians(60.0f), glm::vec3(0, 1.0f, 0));
+        thing_model = glm::translate(thing_model, glm::vec3(1.5f, 0.0f, -3.25f));
+        ourShader.setMat4("model", thing_model);
+        thing.Draw(ourShader);
+
+        // ceiling model
+        glm::mat4 ceiling_model = glm::mat4(1.0f);
+        ceiling_model = glm::scale(ceiling_model, glm::vec3(0.33f, 0.33f, 0.33f));
+        ceiling_model = glm::translate(ceiling_model, glm::vec3(0.0f, 9.0f, 0.0f));
+        ourShader.setMat4("model", ceiling_model);
+        ceiling.Draw(ourShader);
 
         if (programState->ImGuiEnabled)
             DrawImGui(programState);

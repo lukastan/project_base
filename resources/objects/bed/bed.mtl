@@ -1,0 +1,36 @@
+# Blender 3.4.1 MTL File: 'bed.blend'
+# www.blender.org
+
+newmtl bed
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 2
+map_Kd  bed_color.jpeg
+map_Ns  bed_Rough.jpeg
+map_refl  bed_metalic.jpeg
+map_Bump -bm 1.000000  bed_nrm.png
+
+newmtl blanket
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 2
+map_Kd  blanket_color.jpeg
+map_Ns  blanket_rough.jpeg
+map_Bump -bm 1.000000  blanket_nrm.png
+
+newmtl mattress
+Ka 1.000000 1.000000 1.000000
+Ks 0.400000 0.400000 0.400000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 2
+map_Kd  mattress_color.jpeg
+map_Ns  mattresss_rough.jpeg
+map_Bump -bm 1.000000  mattress_nrm.png
