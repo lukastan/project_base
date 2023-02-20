@@ -158,6 +158,7 @@ int main() {
     // configure global opengl state
     // -----------------------------
     glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
 
     // build and compile shaders
     // -------------------------
@@ -180,10 +181,10 @@ int main() {
     ceiling.SetShaderTextureNamePrefix(".material");
 
     PointLight& pointLight = programState->pointLight;
-    pointLight.position = glm::vec3(0.0f, 2.0f, 0.0f);
-    pointLight.ambient = glm::vec3(0.1, 0.1, 0.1);
-    pointLight.diffuse = glm::vec3(0.8, 0.8, 0.8);
-    pointLight.specular = glm::vec3(0.5, 0.5, 0.5);
+    pointLight.position = glm::vec3(1.2f, 1.1f, 0.40f);
+    pointLight.ambient = glm::vec3(0.2, 0.2, 0.2);
+    pointLight.diffuse = glm::vec3(1.0, 0.8, 0.8);
+    pointLight.specular = glm::vec3(0.7, 0.7, 0.7);
 
     pointLight.constant = 1.0f;
     pointLight.linear = 0.5f;
@@ -194,7 +195,7 @@ int main() {
 
     // constants for light flickering
     int lightOffFrameCount = 0;
-    int flickerOccurenceFrequency = 16;
+    int flickerOccurrenceFrequency = 16;
     int flickerFrequency = 1;
 
     // render loop
@@ -206,12 +207,12 @@ int main() {
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        int lightOffCond = (int(currentFrame) % flickerOccurenceFrequency == 0);
+        // Is current frame count divisible by frequency?
+        int lightOffCond = (int(currentFrame) % flickerOccurrenceFrequency == 0);
 
         // input
         // -----
         processInput(window);
-
 
         // render
         // ------
@@ -224,14 +225,15 @@ int main() {
 //        matrix_room = glm::translate(matrix_room, glm::vec3(-10.0f, 10.0f, 0.0f));
 
         // don't forget to enable shader before setting uniforms
+        // If lightCond applies light is placed out of reach for this frame.
         ourShader.use();
-        //pointLight.position = glm::vec3(4.0 * cos(currentFrame), 4.0f, 4.0 * sin(currentFrame));
+        float currentLightPositionY = 1.1f + 1.0f * sin(currentFrame/5);
         if(lightOffCond && lightOffFrameCount < flickerFrequency) {
-            pointLight.position = glm::vec3(0.0f, -20.0f, 0.0f);
+            pointLight.position = glm::vec3(1.2f, -20.0f, 0.40f);
             lightOffFrameCount++;
         }
         else {
-            pointLight.position = glm::vec3(0.0f, 2.0f, 0.0f);
+            pointLight.position = glm::vec3(1.2f, currentLightPositionY, 0.40f);
             lightOffFrameCount = 0;
         }
         ourShader.setVec3("pointLight.position", pointLight.position);
