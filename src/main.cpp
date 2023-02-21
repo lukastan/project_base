@@ -159,6 +159,10 @@ int main() {
     // -----------------------------
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
 
     // build and compile shaders
     // -------------------------
@@ -187,8 +191,8 @@ int main() {
     pointLight.specular = glm::vec3(0.7, 0.7, 0.7);
 
     pointLight.constant = 1.0f;
-    pointLight.linear = 0.5f;
-    pointLight.quadratic = 0.5f;
+    pointLight.linear = 0.3f;
+    pointLight.quadratic = 0.3f;
 
     // draw in wireframe
     //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -201,6 +205,7 @@ int main() {
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window)) {
+        bool shouldDiscard = false;
         // per-frame time logic
         // --------------------
         float currentFrame = glfwGetTime();
@@ -264,18 +269,25 @@ int main() {
         bed.Draw(ourShader);
 
         // room model
+        // TODO 01: when cull face is added, window isn't shown properly
         glm::mat4 room_model = glm::mat4(1.0f);
         room_model = glm::scale(room_model, glm::vec3(35.0f, 35.0f, 35.0f));
         ourShader.setMat4("model", room_model);
         room.Draw(ourShader);
 
         // thing model
+        if(lightOffCond && lightOffFrameCount < flickerFrequency) {
+            shouldDiscard = true;
+        }
+        ourShader.setBool("shouldDiscard", shouldDiscard);
         glm::mat4 thing_model = glm::mat4(1.0f);
         thing_model = glm::scale(thing_model, glm::vec3(0.85f, 0.85f, 0.85f));
         thing_model = glm::rotate(thing_model, glm::radians(60.0f), glm::vec3(0, 1.0f, 0));
         thing_model = glm::translate(thing_model, glm::vec3(1.5f, 0.0f, -3.25f));
         ourShader.setMat4("model", thing_model);
         thing.Draw(ourShader);
+        shouldDiscard = false;
+        ourShader.setBool("shouldDiscard", shouldDiscard);
 
         // ceiling model
         glm::mat4 ceiling_model = glm::mat4(1.0f);

@@ -2,7 +2,7 @@
 out vec4 FragColor;
 
 float near = 0.1;
-float far = 100.0;
+float far = 50.0;
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
     return (2.0 * near * far) / (far + near - z * (far - near));
@@ -33,6 +33,8 @@ in vec3 FragPos;
 uniform PointLight pointLight;
 uniform Material material;
 
+uniform bool shouldDiscard;
+
 uniform vec3 viewPosition;
 // calculates the color when using a point light.
 vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
@@ -62,5 +64,7 @@ void main()
     vec3 normal = normalize(Normal);
     vec3 viewDir = normalize(viewPosition - FragPos);
     vec3 result = CalcPointLight(pointLight, normal, FragPos, viewDir);
+    if(shouldDiscard)
+        discard;
     FragColor = vec4(result + vec3(depth), 1.0);
 }
