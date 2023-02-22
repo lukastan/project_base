@@ -29,6 +29,9 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 // settings
 const unsigned int SCR_WIDTH = 1920;
 const unsigned int SCR_HEIGHT = 1080;
+// blinn is true and the non-blinn option is disabled in processInput
+bool blinn = true;
+//bool blinnKeyPressed = false;
 
 // camera
 
@@ -258,6 +261,8 @@ int main() {
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
 
+        ourShader.setInt("blinn", blinn);
+
         // render the loaded model
 
         // bed model
@@ -330,6 +335,16 @@ void processInput(GLFWwindow *window) {
         programState->camera.ProcessKeyboard(LEFT, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         programState->camera.ProcessKeyboard(RIGHT, deltaTime);
+    // blinn options
+//    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS && !blinnKeyPressed)
+//    {
+//        blinn = !blinn;
+//        blinnKeyPressed = true;
+//    }
+//    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_RELEASE)
+//    {
+//        blinnKeyPressed = false;
+//    }
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes

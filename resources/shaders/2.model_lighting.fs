@@ -1,8 +1,14 @@
 #version 330 core
 out vec4 FragColor;
 
+in VS_OUT {
+    vec3 FragPos;
+    vec3 Normal;
+    vec2 TexCoords;
+} fs_in;
+
 float near = 0.1;
-float far = 50.0;
+float far = 100.0;
 float LinearizeDepth(float depth) {
     float z = depth * 2.0 - 1.0;
     return (2.0 * near * far) / (far + near - z * (far - near));
@@ -26,45 +32,68 @@ struct Material {
 
     float shininess;
 };
-in vec2 TexCoords;
-in vec3 Normal;
-in vec3 FragPos;
 
 uniform PointLight pointLight;
 uniform Material material;
-
 uniform bool shouldDiscard;
-
 uniform vec3 viewPosition;
-// calculates the color when using a point light.
-vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
-{
-    vec3 lightDir = normalize(light.position - fragPos);
-    // diffuse shading
-    float diff = max(dot(normal, lightDir), 0.0);
-    // specular shading
-    vec3 reflectDir = reflect(-lightDir, normal);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
-    // attenuation
-    float distance = length(light.position - fragPos);
-    float attenuation = 0.333 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
-    // combine results
-    vec3 ambient = light.ambient * vec3(texture(material.texture_diffuse1, TexCoords));
-    vec3 diffuse = light.diffuse * diff * vec3(texture(material.texture_diffuse1, TexCoords));
-    vec3 specular = light.specular * spec * vec3(texture(material.texture_specular1, TexCoords).xxx);
-    ambient *= attenuation;
-    diffuse *= attenuation;
-    specular *= attenuation;
-    return (ambient + diffuse + specular);
-}
+uniform bool blinn;
 
 void main()
 {
+    vec3 color = texture(material.texture_diffuse1, fs_in.TexCoords).rgb;
+    // depth
     float depth = LinearizeDepth(gl_FragCoord.z) / far;
-    vec3 normal = normalize(Normal);
-    vec3 viewDir = normalize(viewPosition - FragPos);
-    vec3 result = CalcPointLight(pointLight, normal, FragPos, viewDir);
+    //ambient
+    vec3 ambient = pointLight.ambient * color;
+    // diffuse
+    vec3 normal = normalize(fs_in.Normal);
+    vec3 lightDir = normalize(pointLight.position - fs_in.FragPos);
+    float diff = max(dot(lightDir, normal), 0.0);
+    vec3 diffuse = diff * color;
+    //specular
+    vec3 viewDir = normalize(viewPosition - fs_in.FragPos);
+    vec3 reflectDir = reflect(-lightDir, normal);
+    float spec = 0.0;
+
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+    // two options just to check if blinn does indeed work
+    if(blinn)
+        spec = pow(max(dot(normal, halfwayDir), 0.0), material.shininess);
+    else
+        spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+
+    vec3 specular = vec3(0.3) * spec;
+    //attenuation
+    float distance = length(pointLight.position - fs_in.FragPos);
+    float attenuation = 0.5 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
+    ambient *= attenuation;
+    diffuse *= attenuation;
+    specular *= attenuation;
+
     if(shouldDiscard)
         discard;
-    FragColor = vec4(result + vec3(depth), 1.0);
+    FragColor = vec4(ambient + diffuse + specular + depth, 1.0);
 }
+
+// // calculates the color when using a point light.
+// vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
+// {
+//     vec3 lightDir = normalize(light.position - fragPos);
+//     // diffuse shading
+//     float diff = max(dot(normal, lightDir), 0.0);
+//     // specular shading
+//     vec3 reflectDir = reflect(-lightDir, normal);
+//     float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+//     // attenuation
+//     float distance = length(light.position - fragPos);
+//     float attenuation = 0.333 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
+//     // combine results
+//     vec3 ambient = light.ambient * vec3(texture(material.texture_diffuse1, TexCoords));
+//     vec3 diffuse = light.diffuse * diff * vec3(texture(material.texture_diffuse1, TexCoords));
+//     vec3 specular = light.specular * spec * vec3(texture(material.texture_specular1, TexCoords).xxx);
+//     ambient *= attenuation;
+//     diffuse *= attenuation;
+//     specular *= attenuation;
+//     return (ambient + diffuse + specular);
+// }
