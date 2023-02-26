@@ -224,12 +224,12 @@ int main() {
 
     vector<std::string> faces
     {
-            FileSystem::getPath("resources/textures/skybox/right.png"),
-            FileSystem::getPath("resources/textures/skybox/left.png"),
-            FileSystem::getPath("resources/textures/skybox/top.png"),
-            FileSystem::getPath("resources/textures/skybox/bottom.png"),
-            FileSystem::getPath("resources/textures/skybox/front.png"),
-            FileSystem::getPath("resources/textures/skybox/back.png")
+            FileSystem::getPath("resources/textures/skybox2/right.png"),
+            FileSystem::getPath("resources/textures/skybox2/left.png"),
+            FileSystem::getPath("resources/textures/skybox2/top.png"),
+            FileSystem::getPath("resources/textures/skybox2/bottom.png"),
+            FileSystem::getPath("resources/textures/skybox2/front.png"),
+            FileSystem::getPath("resources/textures/skybox2/back.png")
     };
     unsigned int cubemapTexture = loadCubemap(faces);
 
@@ -255,8 +255,8 @@ int main() {
     PointLight& pointLight = programState->pointLight;
     pointLight.position = programState->camera.Position;
     pointLight.ambient = glm::vec3(0.4, 0.4, 0.4);
-    pointLight.diffuse = glm::vec3(0.8, 0.8, 0.8);
-    pointLight.specular = glm::vec3(0.7, 0.7, 0.7);
+    pointLight.diffuse = glm::vec3(0.5, 0.5, 0.5);
+    pointLight.specular = glm::vec3(0.5, 0.5, 0.5);
 
     pointLight.constant = 1.0f;
     pointLight.linear = 0.32f;
@@ -272,7 +272,12 @@ int main() {
 
     // render loop
     // -----------
-    float currentLightPositionY = 5.0f;
+
+    // light position for flicker effect
+    float currentLightPositionY = 2.0f;
+    // shrek model whereabouts
+    float curPosX = 0.0f;
+    float curPosZ = 0.0f;
     while (!glfwWindowShouldClose(window)) {
         bool shouldDiscard = false;
         // per-frame time logic
@@ -292,11 +297,6 @@ int main() {
         // ------
         glClearColor(programState->clearColor.r, programState->clearColor.g, programState->clearColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-//        glm::mat4 matrix_sewer = glm::mat4(1.0f);
-//        matrix_sewer = glm::scale(matrix_sewer, glm::vec3(4.0f, 4.0f, 1.0f));
-//        matrix_sewer = glm::rotate(matrix_sewer, glm::radians(45.0f), glm::vec3(0, 0, 1.0f));
-//        matrix_sewer = glm::translate(matrix_sewer, glm::vec3(-10.0f, 10.0f, 0.0f));
 
         // don't forget to enable shader before setting uniforms
         // If lightCond applies light is placed out of reach for this frame.
@@ -332,14 +332,6 @@ int main() {
 
         // render the loaded model
 
-//        // bed model
-//        glm::mat4 bed_model = glm::mat4(1.0f);
-//        bed_model = glm::scale(bed_model, glm::vec3(programState->backpackScale));    // it's a bit too big for our scene, so scale it down
-//        bed_model = glm::rotate(bed_model, glm::radians(-90.0f), glm::vec3(0, 1.0f, 0));
-//        bed_model = glm::translate(bed_model,glm::vec3(0.0f, 0.0f, 1.0f)); // translate it down so it's at the center of the scene
-//        ourShader.setMat4("model", bed_model);
-//        bed.Draw(ourShader);
-
         // forest model
         glm::mat4 forest_model = glm::mat4(1.0f);
         forest_model = glm::scale(forest_model, glm::vec3(8.0f, 8.0f, 8.0f));
@@ -353,20 +345,32 @@ int main() {
         }
         ourShader.setBool("shouldDiscard", shouldDiscard);
         glm::mat4 shrek_model = glm::mat4(1.0f);
-        shrek_model = glm::scale(shrek_model, glm::vec3(2.5f, 2.5f, 2.5f));
-        //shrek_model = glm::rotate(shrek_model, glm::radians(180.0f), glm::vec3(0, 1.0f, 0));
-        shrek_model = glm::translate(shrek_model, glm::vec3(0.0f, 0.1f, 0.0f));
+
+        float camX = programState->camera.Position.x;
+        float camZ = programState->camera.Position.z;
+        if((abs(camX - curPosX) >= 16.0f || abs(camZ - curPosZ) >= 16.0f) || (abs(camX - curPosX) <= 3.0f || abs(camZ - curPosZ) <= 3.0f)) {
+            curPosX = (float)(rand() % 25 - 12) + camX;
+            curPosZ = (float)(rand() % 25 - 12) + camZ;
+        }
+        shrek_model = glm::inverse(glm::lookAt(glm::vec3(curPosX, 0.1f, curPosZ), programState->camera.Position, glm::vec3(0.0f, 1.0f, 0.0f)));
+        shrek_model = glm::scale(shrek_model, glm::vec3(2.8f, 2.8f, 2.8f));
+        shrek_model = glm::rotate(shrek_model, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, -0.2f));
+        // a **very ugly** way to get a random-looking 'teleportation'
+        if(lightOffFrameCount >= flickerFrequency) {
+            float rng1 = (float)(rand() % 61 - 30);
+            float rng2 = (float)(rand() % 61 - 30);
+            float rng3 = (float)(rand() % 61 - 30);
+            shrek_model = glm::inverse(glm::lookAt(glm::vec3(curPosX + rng1/30, 0.1f + rng2/90, curPosZ + rng3/30), programState->camera.Position, glm::vec3(0.0f, 1.0f, 0.0f)));
+            shrek_model = glm::rotate(shrek_model, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, -0.2f));
+            shrek_model = glm::scale(shrek_model, glm::vec3(2.8f, 2.8f, 2.8f));
+            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng1), glm::vec3(0.25f, 0, 0));
+            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng2), glm::vec3(0, 1.0f, 0));
+            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng3), glm::vec3(0, 0, 0.25f));
+        }
         ourShader.setMat4("model", shrek_model);
         shrek.Draw(ourShader);
         shouldDiscard = false;
         ourShader.setBool("shouldDiscard", shouldDiscard);
-
-//        // ceiling model
-//        glm::mat4 ceiling_model = glm::mat4(1.0f);
-//        ceiling_model = glm::scale(ceiling_model, glm::vec3(0.33f, 0.33f, 0.33f));
-//        ceiling_model = glm::translate(ceiling_model, glm::vec3(0.0f, 9.0f, 0.0f));
-//        ourShader.setMat4("model", ceiling_model);
-//        ceiling.Draw(ourShader);
 
         // skybox
         glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content

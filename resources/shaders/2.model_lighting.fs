@@ -66,7 +66,7 @@ void main()
     vec3 specular = vec3(0.3) * spec;
     //attenuation
     float distance = length(pointLight.position - fs_in.FragPos);
-    float attenuation = 1 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
+    float attenuation = 0.333 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
     ambient *= attenuation;
     diffuse *= attenuation;
     specular *= attenuation;
@@ -76,7 +76,7 @@ void main()
     if(color.a < 0.1)
         discard;
 
-    FragColor = vec4(ambient + diffuse + specular + depth/3, 1.0);
+    FragColor = vec4(ambient + diffuse + specular + depth/2, 1.0);
 }
 
 // // calculates the color when using a point light.
