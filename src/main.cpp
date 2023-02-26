@@ -17,14 +17,11 @@
 #include <iostream>
 
 void framebuffer_size_callback(GLFWwindow *window, int width, int height);
-
 void mouse_callback(GLFWwindow *window, double xpos, double ypos);
-
 void scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
-
 void processInput(GLFWwindow *window);
-
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods);
+unsigned int loadCubemap(vector<std::string> faces);
 
 // settings
 const unsigned int SCR_WIDTH = 1920;
@@ -53,7 +50,6 @@ struct PointLight {
     float linear;
     float quadratic;
 };
-
 struct ProgramState {
     glm::vec3 clearColor = glm::vec3(0);
     bool ImGuiEnabled = false;
@@ -69,7 +65,6 @@ struct ProgramState {
 
     void LoadFromFile(std::string filename);
 };
-
 void ProgramState::SaveToFile(std::string filename) {
     std::ofstream out(filename);
     out << clearColor.r << '\n'
@@ -83,7 +78,6 @@ void ProgramState::SaveToFile(std::string filename) {
         << camera.Front.y << '\n'
         << camera.Front.z << '\n';
 }
-
 void ProgramState::LoadFromFile(std::string filename) {
     std::ifstream in(filename);
     if (in) {
@@ -99,7 +93,6 @@ void ProgramState::LoadFromFile(std::string filename) {
            >> camera.Front.z;
     }
 }
-
 ProgramState *programState;
 
 void DrawImGui(ProgramState *programState);
@@ -159,43 +152,115 @@ int main() {
     ImGui_ImplOpenGL3_Init("#version 330 core");
 
     // configure global opengl state
+    // depth test, blend, face culling
     // -----------------------------
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
+
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
 
     // build and compile shaders
     // -------------------------
     Shader ourShader("resources/shaders/2.model_lighting.vs", "resources/shaders/2.model_lighting.fs");
+    Shader skyboxShader("resources/shaders/skybox.vs", "resources/shaders/skybox.fs");
+
+    float skyboxVertices[] = {
+            // positions
+            -1.0f,  1.0f, -1.0f,
+            -1.0f, -1.0f, -1.0f,
+            1.0f, -1.0f, -1.0f,
+            1.0f, -1.0f, -1.0f,
+            1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
+
+            -1.0f, -1.0f,  1.0f,
+            -1.0f, -1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f,  1.0f,
+            -1.0f, -1.0f,  1.0f,
+
+            1.0f, -1.0f, -1.0f,
+            1.0f, -1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f, -1.0f,
+            1.0f, -1.0f, -1.0f,
+
+            -1.0f, -1.0f,  1.0f,
+            -1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f, -1.0f,  1.0f,
+            -1.0f, -1.0f,  1.0f,
+
+            -1.0f,  1.0f, -1.0f,
+            1.0f,  1.0f, -1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            -1.0f,  1.0f,  1.0f,
+            -1.0f,  1.0f, -1.0f,
+
+            -1.0f, -1.0f, -1.0f,
+            -1.0f, -1.0f,  1.0f,
+            1.0f, -1.0f, -1.0f,
+            1.0f, -1.0f, -1.0f,
+            -1.0f, -1.0f,  1.0f,
+            1.0f, -1.0f,  1.0f
+    };
+
+    unsigned int skyboxVAO, skyboxVBO;
+    glGenVertexArrays(1, &skyboxVAO);
+    glGenBuffers(1, &skyboxVBO);
+    glBindVertexArray(skyboxVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
+    vector<std::string> faces
+    {
+            FileSystem::getPath("resources/textures/skybox/right.png"),
+            FileSystem::getPath("resources/textures/skybox/left.png"),
+            FileSystem::getPath("resources/textures/skybox/top.png"),
+            FileSystem::getPath("resources/textures/skybox/bottom.png"),
+            FileSystem::getPath("resources/textures/skybox/front.png"),
+            FileSystem::getPath("resources/textures/skybox/back.png")
+    };
+    unsigned int cubemapTexture = loadCubemap(faces);
+
+    skyboxShader.use();
+    skyboxShader.setInt("skybox", 0);
 
     // load models
     // -----------
     stbi_set_flip_vertically_on_load(false);
 
-    Model room("resources/objects/room/room.obj");
-    room.SetShaderTextureNamePrefix("material.");
+    Model forest("resources/objects/forest/forest.obj");
+    forest.SetShaderTextureNamePrefix("material.");
 
     Model bed("resources/objects/bed/bed.obj");
     bed.SetShaderTextureNamePrefix(".material");
 
-    Model thing("resources/objects/thing/thing.obj");
-    thing.SetShaderTextureNamePrefix(".material");
+    Model shrek("resources/objects/shrek/shrek.obj");
+    shrek.SetShaderTextureNamePrefix(".material");
 
     Model ceiling("resources/objects/ceiling/ceiling.obj");
     ceiling.SetShaderTextureNamePrefix(".material");
 
     PointLight& pointLight = programState->pointLight;
-    pointLight.position = glm::vec3(1.2f, 1.1f, 0.40f);
-    pointLight.ambient = glm::vec3(0.2, 0.2, 0.2);
-    pointLight.diffuse = glm::vec3(1.0, 0.8, 0.8);
+    pointLight.position = programState->camera.Position;
+    pointLight.ambient = glm::vec3(0.4, 0.4, 0.4);
+    pointLight.diffuse = glm::vec3(0.8, 0.8, 0.8);
     pointLight.specular = glm::vec3(0.7, 0.7, 0.7);
 
     pointLight.constant = 1.0f;
-    pointLight.linear = 0.3f;
-    pointLight.quadratic = 0.3f;
+    pointLight.linear = 0.32f;
+    pointLight.quadratic = 0.32f;
 
     // draw in wireframe
     //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -207,6 +272,7 @@ int main() {
 
     // render loop
     // -----------
+    float currentLightPositionY = 5.0f;
     while (!glfwWindowShouldClose(window)) {
         bool shouldDiscard = false;
         // per-frame time logic
@@ -227,21 +293,23 @@ int main() {
         glClearColor(programState->clearColor.r, programState->clearColor.g, programState->clearColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-//        glm::mat4 matrix_room = glm::mat4(1.0f);
-//        matrix_room = glm::scale(matrix_room, glm::vec3(4.0f, 4.0f, 1.0f));
-//        matrix_room = glm::rotate(matrix_room, glm::radians(45.0f), glm::vec3(0, 0, 1.0f));
-//        matrix_room = glm::translate(matrix_room, glm::vec3(-10.0f, 10.0f, 0.0f));
+//        glm::mat4 matrix_sewer = glm::mat4(1.0f);
+//        matrix_sewer = glm::scale(matrix_sewer, glm::vec3(4.0f, 4.0f, 1.0f));
+//        matrix_sewer = glm::rotate(matrix_sewer, glm::radians(45.0f), glm::vec3(0, 0, 1.0f));
+//        matrix_sewer = glm::translate(matrix_sewer, glm::vec3(-10.0f, 10.0f, 0.0f));
 
         // don't forget to enable shader before setting uniforms
         // If lightCond applies light is placed out of reach for this frame.
+
+        // view/projection transformations
         ourShader.use();
-        float currentLightPositionY = 1.1f + 1.0f * sin(currentFrame/5);
+        pointLight.position = programState->camera.Position + glm::vec3(cos(currentFrame)/2, 2.0f, sin(currentFrame)/2);
         if(lightOffCond && lightOffFrameCount < flickerFrequency) {
-            pointLight.position = glm::vec3(1.2f, -20.0f, 0.40f);
+            pointLight.position.y = -20.0f;
             lightOffFrameCount++;
         }
         else {
-            pointLight.position = glm::vec3(1.2f, currentLightPositionY, 0.40f);
+            pointLight.position.y = currentLightPositionY;
             lightOffFrameCount = 0;
         }
         ourShader.setVec3("pointLight.position", pointLight.position);
@@ -254,52 +322,65 @@ int main() {
         ourShader.setVec3("viewPosition", programState->camera.Position);
         ourShader.setFloat("material.shininess", 32.0f);
 
-        // view/projection transformations
         glm::mat4 projection = glm::perspective(glm::radians(programState->camera.Zoom),
                                                 (float) SCR_WIDTH / (float) SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = programState->camera.GetViewMatrix();
+
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
-
         ourShader.setInt("blinn", blinn);
 
         // render the loaded model
 
-        // bed model
-        glm::mat4 bed_model = glm::mat4(1.0f);
-        bed_model = glm::scale(bed_model, glm::vec3(programState->backpackScale));    // it's a bit too big for our scene, so scale it down
-        bed_model = glm::rotate(bed_model, glm::radians(-90.0f), glm::vec3(0, 1.0f, 0));
-        bed_model = glm::translate(bed_model,glm::vec3(0.0f, 0.0f, 1.0f)); // translate it down so it's at the center of the scene
-        ourShader.setMat4("model", bed_model);
-        bed.Draw(ourShader);
+//        // bed model
+//        glm::mat4 bed_model = glm::mat4(1.0f);
+//        bed_model = glm::scale(bed_model, glm::vec3(programState->backpackScale));    // it's a bit too big for our scene, so scale it down
+//        bed_model = glm::rotate(bed_model, glm::radians(-90.0f), glm::vec3(0, 1.0f, 0));
+//        bed_model = glm::translate(bed_model,glm::vec3(0.0f, 0.0f, 1.0f)); // translate it down so it's at the center of the scene
+//        ourShader.setMat4("model", bed_model);
+//        bed.Draw(ourShader);
 
-        // room model
-        // TODO 01: when cull face is added, window isn't shown properly
-        glm::mat4 room_model = glm::mat4(1.0f);
-        room_model = glm::scale(room_model, glm::vec3(35.0f, 35.0f, 35.0f));
-        ourShader.setMat4("model", room_model);
-        room.Draw(ourShader);
+        // forest model
+        glm::mat4 forest_model = glm::mat4(1.0f);
+        forest_model = glm::scale(forest_model, glm::vec3(8.0f, 8.0f, 8.0f));
+        forest_model = glm::translate(forest_model, glm::vec3(0.0f, 0.0f, 0.0f));
+        ourShader.setMat4("model", forest_model);
+        forest.Draw(ourShader);
 
-        // thing model
+        // shrek model
         if(lightOffCond && lightOffFrameCount < flickerFrequency) {
             shouldDiscard = true;
         }
         ourShader.setBool("shouldDiscard", shouldDiscard);
-        glm::mat4 thing_model = glm::mat4(1.0f);
-        thing_model = glm::scale(thing_model, glm::vec3(0.85f, 0.85f, 0.85f));
-        thing_model = glm::rotate(thing_model, glm::radians(60.0f), glm::vec3(0, 1.0f, 0));
-        thing_model = glm::translate(thing_model, glm::vec3(1.5f, 0.0f, -3.25f));
-        ourShader.setMat4("model", thing_model);
-        thing.Draw(ourShader);
+        glm::mat4 shrek_model = glm::mat4(1.0f);
+        shrek_model = glm::scale(shrek_model, glm::vec3(2.5f, 2.5f, 2.5f));
+        //shrek_model = glm::rotate(shrek_model, glm::radians(180.0f), glm::vec3(0, 1.0f, 0));
+        shrek_model = glm::translate(shrek_model, glm::vec3(0.0f, 0.1f, 0.0f));
+        ourShader.setMat4("model", shrek_model);
+        shrek.Draw(ourShader);
         shouldDiscard = false;
         ourShader.setBool("shouldDiscard", shouldDiscard);
 
-        // ceiling model
-        glm::mat4 ceiling_model = glm::mat4(1.0f);
-        ceiling_model = glm::scale(ceiling_model, glm::vec3(0.33f, 0.33f, 0.33f));
-        ceiling_model = glm::translate(ceiling_model, glm::vec3(0.0f, 9.0f, 0.0f));
-        ourShader.setMat4("model", ceiling_model);
-        ceiling.Draw(ourShader);
+//        // ceiling model
+//        glm::mat4 ceiling_model = glm::mat4(1.0f);
+//        ceiling_model = glm::scale(ceiling_model, glm::vec3(0.33f, 0.33f, 0.33f));
+//        ceiling_model = glm::translate(ceiling_model, glm::vec3(0.0f, 9.0f, 0.0f));
+//        ourShader.setMat4("model", ceiling_model);
+//        ceiling.Draw(ourShader);
+
+        // skybox
+        glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
+        skyboxShader.use();
+        view = glm::mat4(glm::mat3(programState->camera.GetViewMatrix())); // remove translation from the view matrix
+        skyboxShader.setMat4("view", view);
+        skyboxShader.setMat4("projection", projection);
+        // skybox cube
+        glBindVertexArray(skyboxVAO);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        glBindVertexArray(0);
+        glDepthFunc(GL_LESS); // set depth function back to default
 
         if (programState->ImGuiEnabled)
             DrawImGui(programState);
@@ -317,6 +398,9 @@ int main() {
     ImGui::DestroyContext();
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
+    glDeleteVertexArrays(1, &skyboxVAO);
+    glDeleteBuffers(1, &skyboxVBO);
+
     glfwTerminate();
     return 0;
 }
@@ -427,4 +511,34 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
         }
     }
+}
+
+unsigned int loadCubemap(vector<std::string> faces)
+{
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+
+    int width, height, nrChannels;
+    for (unsigned int i = 0; i < faces.size(); i++)
+    {
+        unsigned char *data = stbi_load(faces[i].c_str(), &width, &height, &nrChannels, 3);
+        if (data)
+        {
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+            stbi_image_free(data);
+        }
+        else
+        {
+            std::cout << "Cubemap texture failed to load at path: " << faces[i] << std::endl;
+            stbi_image_free(data);
+        }
+    }
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    return textureID;
 }

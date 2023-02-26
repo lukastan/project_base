@@ -41,16 +41,16 @@ uniform bool blinn;
 
 void main()
 {
-    vec3 color = texture(material.texture_diffuse1, fs_in.TexCoords).rgb;
+    vec4 color = texture(material.texture_diffuse1, fs_in.TexCoords);
     // depth
     float depth = LinearizeDepth(gl_FragCoord.z) / far;
     //ambient
-    vec3 ambient = pointLight.ambient * color;
+    vec3 ambient = pointLight.ambient * color.rgb;
     // diffuse
     vec3 normal = normalize(fs_in.Normal);
     vec3 lightDir = normalize(pointLight.position - fs_in.FragPos);
     float diff = max(dot(lightDir, normal), 0.0);
-    vec3 diffuse = diff * color;
+    vec3 diffuse = diff * color.rgb;
     //specular
     vec3 viewDir = normalize(viewPosition - fs_in.FragPos);
     vec3 reflectDir = reflect(-lightDir, normal);
@@ -66,14 +66,17 @@ void main()
     vec3 specular = vec3(0.3) * spec;
     //attenuation
     float distance = length(pointLight.position - fs_in.FragPos);
-    float attenuation = 0.5 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
+    float attenuation = 1 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
     ambient *= attenuation;
     diffuse *= attenuation;
     specular *= attenuation;
 
     if(shouldDiscard)
         discard;
-    FragColor = vec4(ambient + diffuse + specular + depth, 1.0);
+    if(color.a < 0.1)
+        discard;
+
+    FragColor = vec4(ambient + diffuse + specular + depth/3, 1.0);
 }
 
 // // calculates the color when using a point light.
