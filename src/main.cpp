@@ -29,6 +29,9 @@ const unsigned int SCR_HEIGHT = 1080;
 // blinn is true and the non-blinn option is disabled in processInput
 bool blinn = true;
 //bool blinnKeyPressed = false;
+// shadows
+bool shadows = true;
+bool shadowsKeyPressed = false;
 
 // camera
 
@@ -167,6 +170,33 @@ int main() {
     // -------------------------
     Shader ourShader("resources/shaders/2.model_lighting.vs", "resources/shaders/2.model_lighting.fs");
     Shader skyboxShader("resources/shaders/skybox.vs", "resources/shaders/skybox.fs");
+    Shader depthShader("resources/shaders/point_shadows.vs", "resources/shaders/point_shadows.fs", "resources/shaders/point_shadows.gs");
+
+    const unsigned int SHADOW_WIDTH = 1024;
+    const unsigned int SHADOW_HEIGHT = 1024;
+    unsigned int depthMapFBO;
+    glGenFramebuffers(1, &depthMapFBO);
+    // create depth cubemap texture
+    unsigned int depthCubemap;
+    glGenTextures(1, &depthCubemap);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemap);
+    for (unsigned int i = 0; i < 6; ++i)
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    // attach depth texture as FBO's depth buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthCubemap, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    ourShader.use();
+    ourShader.setInt("material.texture_diffuse1", 0);
+    ourShader.setInt("depthMap", 1);
 
     float skyboxVertices[] = {
             // positions
@@ -224,12 +254,12 @@ int main() {
 
     vector<std::string> faces
     {
-            FileSystem::getPath("resources/textures/skybox2/right.png"),
-            FileSystem::getPath("resources/textures/skybox2/left.png"),
-            FileSystem::getPath("resources/textures/skybox2/top.png"),
-            FileSystem::getPath("resources/textures/skybox2/bottom.png"),
-            FileSystem::getPath("resources/textures/skybox2/front.png"),
-            FileSystem::getPath("resources/textures/skybox2/back.png")
+            FileSystem::getPath("resources/textures/skybox/right.png"),
+            FileSystem::getPath("resources/textures/skybox/left.png"),
+            FileSystem::getPath("resources/textures/skybox/top.png"),
+            FileSystem::getPath("resources/textures/skybox/bottom.png"),
+            FileSystem::getPath("resources/textures/skybox/front.png"),
+            FileSystem::getPath("resources/textures/skybox/back.png")
     };
     unsigned int cubemapTexture = loadCubemap(faces);
 
@@ -243,14 +273,14 @@ int main() {
     Model forest("resources/objects/forest/forest.obj");
     forest.SetShaderTextureNamePrefix("material.");
 
-    Model bed("resources/objects/bed/bed.obj");
-    bed.SetShaderTextureNamePrefix(".material");
+    Model leaves("resources/objects/leaves/leaves.obj");
+    leaves.SetShaderTextureNamePrefix("material.");
+
+    Model bushes("resources/objects/bushes/bushes.obj");
+    bushes.SetShaderTextureNamePrefix("material.");
 
     Model shrek("resources/objects/shrek/shrek.obj");
     shrek.SetShaderTextureNamePrefix(".material");
-
-    Model ceiling("resources/objects/ceiling/ceiling.obj");
-    ceiling.SetShaderTextureNamePrefix(".material");
 
     PointLight& pointLight = programState->pointLight;
     pointLight.position = programState->camera.Position;
@@ -259,8 +289,8 @@ int main() {
     pointLight.specular = glm::vec3(0.5, 0.5, 0.5);
 
     pointLight.constant = 1.0f;
-    pointLight.linear = 0.32f;
-    pointLight.quadratic = 0.32f;
+    pointLight.linear = 0.48f;
+    pointLight.quadratic = 0.48f;
 
     // draw in wireframe
     //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -272,7 +302,6 @@ int main() {
 
     // render loop
     // -----------
-
     // light position for flicker effect
     float currentLightPositionY = 2.0f;
     // shrek model whereabouts
@@ -298,12 +327,98 @@ int main() {
         glClearColor(programState->clearColor.r, programState->clearColor.g, programState->clearColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // don't forget to enable shader before setting uniforms
-        // If lightCond applies light is placed out of reach for this frame.
+        // create depth cubemap transformation matrices
+        float near_plane = 1.0f;
+        float far_plane = 25.0f;
+        glm::mat4 shadowProj = glm::perspective(glm::radians(90.0f), (float)SHADOW_WIDTH / (float)SHADOW_HEIGHT, near_plane, far_plane);
+        std::vector<glm::mat4> shadowTransforms;
+        shadowTransforms.push_back(shadowProj * glm::lookAt(pointLight.position, pointLight.position + glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
+        shadowTransforms.push_back(shadowProj * glm::lookAt(pointLight.position, pointLight.position + glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
+        shadowTransforms.push_back(shadowProj * glm::lookAt(pointLight.position, pointLight.position + glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
+        shadowTransforms.push_back(shadowProj * glm::lookAt(pointLight.position, pointLight.position + glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f)));
+        shadowTransforms.push_back(shadowProj * glm::lookAt(pointLight.position, pointLight.position + glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
+        shadowTransforms.push_back(shadowProj * glm::lookAt(pointLight.position, pointLight.position + glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
 
+        // render scene to depth cubemap
+        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        depthShader.use();
+        for (unsigned int i = 0; i < 6; ++i)
+            depthShader.setMat4("shadowMatrices[" + std::to_string(i) + "]", shadowTransforms[i]);
+        depthShader.setFloat("far_plane", far_plane);
+        depthShader.setVec3("lightPos", pointLight.position);
+
+        // forest model
+        glm::mat4 forest_model = glm::mat4(1.0f);
+        forest_model = glm::scale(forest_model, glm::vec3(8.0f, 8.0f, 8.0f));
+        forest_model = glm::translate(forest_model, glm::vec3(0.0f, 0.0f, 0.0f));
+        ourShader.setMat4("model", forest_model);
+        forest.Draw(ourShader);
+
+        // leaves model
+        glCullFace(GL_FRONT);
+        glm::mat4 leaves_model = glm::mat4(1.0f);
+        leaves_model = glm::scale(leaves_model, glm::vec3(8.0f, 8.0f, 8.0f));
+        leaves_model = glm::translate(leaves_model, glm::vec3(0.0f, 0.0f, 0.0f));
+        ourShader.setMat4("model", leaves_model);
+        leaves.Draw(ourShader);
+        glCullFace(GL_BACK);
+
+        // bushes model
+        glDisable(GL_CULL_FACE);
+        glm::mat4 bushes_model = glm::mat4(1.0f);
+        bushes_model = glm::scale(bushes_model, glm::vec3(8.0f, 8.0f, 8.0f));
+        bushes_model = glm::translate(bushes_model, glm::vec3(0.0f, 0.0f, 0.0f));
+        ourShader.setMat4("model", bushes_model);
+        bushes.Draw(ourShader);
+        glEnable(GL_CULL_FACE);
+
+        // shrek model
+        if(lightOffCond && lightOffFrameCount < flickerFrequency) {
+            shouldDiscard = true;
+        }
+        ourShader.setBool("shouldDiscard", shouldDiscard);
+        glm::mat4 shrek_model = glm::mat4(1.0f);
+
+        float camX = programState->camera.Position.x;
+        float camZ = programState->camera.Position.z;
+        float tmp1 = camX - curPosX;
+        float tmp2 = camZ - curPosZ;
+        float distance = sqrt(tmp1 * tmp1 + tmp2 * tmp2);
+        if(distance >= 12.0f|| distance <= 5.0f) {
+            curPosX = (float)(rand() % 25 - 12) + camX;
+            curPosZ = (float)(rand() % 25 - 12) + camZ;
+        }
+        shrek_model = glm::inverse(glm::lookAt(glm::vec3(curPosX, 0.1f, curPosZ), programState->camera.Position, glm::vec3(0.0f, 1.0f, 0.0f)));
+        shrek_model = glm::scale(shrek_model, glm::vec3(2.8f, 2.8f, 2.8f));
+        shrek_model = glm::rotate(shrek_model, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, -0.2f));
+        // a **very ugly** way to get a random-looking 'teleportation'
+        if(lightOffFrameCount >= flickerFrequency) {
+            float rng1 = (float)(rand() % 61 - 30);
+            float rng2 = (float)(rand() % 61 - 30);
+            float rng3 = (float)(rand() % 61 - 30);
+            shrek_model = glm::inverse(glm::lookAt(glm::vec3(curPosX + rng1/30, 0.1f + rng2/90, curPosZ + rng3/30), programState->camera.Position, glm::vec3(0.0f, 1.0f, 0.0f)));
+            shrek_model = glm::rotate(shrek_model, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, -0.2f));
+            shrek_model = glm::scale(shrek_model, glm::vec3(2.8f, 2.8f, 2.8f));
+            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng1), glm::vec3(0.25f, 0, 0));
+            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng2), glm::vec3(0, 1.0f, 0));
+            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng3), glm::vec3(0, 0, 0.25f));
+        }
+        ourShader.setMat4("model", shrek_model);
+        shrek.Draw(ourShader);
+
+        shouldDiscard = false;
+        ourShader.setBool("shouldDiscard", shouldDiscard);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // If lightCond applies light is placed out of reach for this frame.
         // view/projection transformations
+        glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         ourShader.use();
-        pointLight.position = programState->camera.Position + glm::vec3(cos(currentFrame)/2, 2.0f, sin(currentFrame)/2);
+        pointLight.position = programState->camera.Position + glm::vec3(cos(currentFrame), 2.0f, sin(currentFrame));
         if(lightOffCond && lightOffFrameCount < flickerFrequency) {
             pointLight.position.y = -20.0f;
             lightOffFrameCount++;
@@ -329,44 +444,34 @@ int main() {
         ourShader.setMat4("projection", projection);
         ourShader.setMat4("view", view);
         ourShader.setInt("blinn", blinn);
-
-        // render the loaded model
+        ourShader.setBool("shadows", shadows);
+        ourShader.setFloat("far_plane", far_plane);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemap);
 
         // forest model
-        glm::mat4 forest_model = glm::mat4(1.0f);
-        forest_model = glm::scale(forest_model, glm::vec3(8.0f, 8.0f, 8.0f));
-        forest_model = glm::translate(forest_model, glm::vec3(0.0f, 0.0f, 0.0f));
+        // WARNING! If you delete the next line and only the next line, a cool but creepy effect happens!
         ourShader.setMat4("model", forest_model);
         forest.Draw(ourShader);
 
+        // leaves model
+        glCullFace(GL_FRONT);
+        ourShader.setMat4("model", leaves_model);
+        leaves.Draw(ourShader);
+        glCullFace(GL_BACK);
+
+        //bushes model
+        glDisable(GL_CULL_FACE);
+        ourShader.setMat4("model", bushes_model);
+        bushes.Draw(ourShader);
+        glEnable(GL_CULL_FACE);
+
         // shrek model
+        // WARNING! If you delete the next line and only the next line, a BIG SHREK will appear!
         if(lightOffCond && lightOffFrameCount < flickerFrequency) {
             shouldDiscard = true;
         }
         ourShader.setBool("shouldDiscard", shouldDiscard);
-        glm::mat4 shrek_model = glm::mat4(1.0f);
-
-        float camX = programState->camera.Position.x;
-        float camZ = programState->camera.Position.z;
-        if((abs(camX - curPosX) >= 16.0f || abs(camZ - curPosZ) >= 16.0f) || (abs(camX - curPosX) <= 3.0f || abs(camZ - curPosZ) <= 3.0f)) {
-            curPosX = (float)(rand() % 25 - 12) + camX;
-            curPosZ = (float)(rand() % 25 - 12) + camZ;
-        }
-        shrek_model = glm::inverse(glm::lookAt(glm::vec3(curPosX, 0.1f, curPosZ), programState->camera.Position, glm::vec3(0.0f, 1.0f, 0.0f)));
-        shrek_model = glm::scale(shrek_model, glm::vec3(2.8f, 2.8f, 2.8f));
-        shrek_model = glm::rotate(shrek_model, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, -0.2f));
-        // a **very ugly** way to get a random-looking 'teleportation'
-        if(lightOffFrameCount >= flickerFrequency) {
-            float rng1 = (float)(rand() % 61 - 30);
-            float rng2 = (float)(rand() % 61 - 30);
-            float rng3 = (float)(rand() % 61 - 30);
-            shrek_model = glm::inverse(glm::lookAt(glm::vec3(curPosX + rng1/30, 0.1f + rng2/90, curPosZ + rng3/30), programState->camera.Position, glm::vec3(0.0f, 1.0f, 0.0f)));
-            shrek_model = glm::rotate(shrek_model, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, -0.2f));
-            shrek_model = glm::scale(shrek_model, glm::vec3(2.8f, 2.8f, 2.8f));
-            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng1), glm::vec3(0.25f, 0, 0));
-            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng2), glm::vec3(0, 1.0f, 0));
-            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng3), glm::vec3(0, 0, 0.25f));
-        }
         ourShader.setMat4("model", shrek_model);
         shrek.Draw(ourShader);
         shouldDiscard = false;
@@ -433,6 +538,15 @@ void processInput(GLFWwindow *window) {
 //    {
 //        blinnKeyPressed = false;
 //    }
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !shadowsKeyPressed)
+    {
+        shadows = !shadows;
+        shadowsKeyPressed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE)
+    {
+        shadowsKeyPressed = false;
+    }
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes

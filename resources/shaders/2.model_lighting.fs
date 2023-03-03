@@ -33,11 +33,43 @@ struct Material {
     float shininess;
 };
 
+vec3 gridSamplingDisk[20] = vec3[]
+(
+   vec3(1, 1,  1), vec3( 1, -1,  1), vec3(-1, -1,  1), vec3(-1, 1,  1),
+   vec3(1, 1, -1), vec3( 1, -1, -1), vec3(-1, -1, -1), vec3(-1, 1, -1),
+   vec3(1, 1,  0), vec3( 1, -1,  0), vec3(-1, -1,  0), vec3(-1, 1,  0),
+   vec3(1, 0,  1), vec3(-1,  0,  1), vec3( 1,  0, -1), vec3(-1, 0, -1),
+   vec3(0, 1,  1), vec3( 0, -1,  1), vec3( 0, -1, -1), vec3( 0, 1, -1)
+);
+uniform samplerCube depthMap;
+uniform float far_plane;
+uniform bool shadows;
+
 uniform PointLight pointLight;
 uniform Material material;
 uniform bool shouldDiscard;
 uniform vec3 viewPosition;
 uniform bool blinn;
+
+float ShadowCalculation(vec3 fragPos)
+{
+    vec3 fragToLight = fragPos - pointLight.position;
+    float currentDepth = length(fragToLight);
+    float shadow = 0.0;
+    float bias = 0.15;
+    int samples = 20;
+    float viewDistance = length(viewPosition - fragPos);
+    float diskRadius = (1.0 + (viewDistance / far_plane)) / 25.0;
+    for(int i = 0; i < samples; ++i)
+    {
+        float closestDepth = texture(depthMap, fragToLight + gridSamplingDisk[i] * diskRadius).r;
+        closestDepth *= far_plane;   // undo mapping [0;1]
+        if(currentDepth - bias > closestDepth)
+            shadow += 1.0;
+    }
+    shadow /= float(samples);
+    return shadow;
+}
 
 void main()
 {
@@ -55,9 +87,8 @@ void main()
     vec3 viewDir = normalize(viewPosition - fs_in.FragPos);
     vec3 reflectDir = reflect(-lightDir, normal);
     float spec = 0.0;
-
+    //blinn set and check
     vec3 halfwayDir = normalize(lightDir + viewDir);
-    // two options just to check if blinn does indeed work
     if(blinn)
         spec = pow(max(dot(normal, halfwayDir), 0.0), material.shininess);
     else
@@ -66,37 +97,18 @@ void main()
     vec3 specular = vec3(0.3) * spec;
     //attenuation
     float distance = length(pointLight.position - fs_in.FragPos);
-    float attenuation = 0.333 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
+    float attenuation = 0.666 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
     ambient *= attenuation;
     diffuse *= attenuation;
     specular *= attenuation;
+    // calculate shadow
+    float shadow = shadows ? ShadowCalculation(fs_in.FragPos) : 0.0;
 
     if(shouldDiscard)
         discard;
     if(color.a < 0.1)
         discard;
 
-    FragColor = vec4(ambient + diffuse + specular + depth/2, 1.0);
+    // to get a weird effect, put depth before the closing bracket on the left
+    FragColor = vec4(ambient + (1.0 - shadow) * (diffuse + specular) + depth/4, 1.0);
 }
-
-// // calculates the color when using a point light.
-// vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
-// {
-//     vec3 lightDir = normalize(light.position - fragPos);
-//     // diffuse shading
-//     float diff = max(dot(normal, lightDir), 0.0);
-//     // specular shading
-//     vec3 reflectDir = reflect(-lightDir, normal);
-//     float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
-//     // attenuation
-//     float distance = length(light.position - fragPos);
-//     float attenuation = 0.333 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));
-//     // combine results
-//     vec3 ambient = light.ambient * vec3(texture(material.texture_diffuse1, TexCoords));
-//     vec3 diffuse = light.diffuse * diff * vec3(texture(material.texture_diffuse1, TexCoords));
-//     vec3 specular = light.specular * spec * vec3(texture(material.texture_specular1, TexCoords).xxx);
-//     ambient *= attenuation;
-//     diffuse *= attenuation;
-//     specular *= attenuation;
-//     return (ambient + diffuse + specular);
-// }
