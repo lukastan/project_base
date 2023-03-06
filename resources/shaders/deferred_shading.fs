@@ -1,0 +1,90 @@
+#version 330 core
+out vec4 FragColor;
+
+in vec2 TexCoords;
+
+uniform sampler2D gPosition;
+uniform sampler2D gNormal;
+uniform sampler2D gAlbedoSpec;
+uniform samplerCube depthMap;
+
+vec3 gridSamplingDisk[20] = vec3[]
+(
+   vec3(1, 1,  1), vec3( 1, -1,  1), vec3(-1, -1,  1), vec3(-1, 1,  1),
+   vec3(1, 1, -1), vec3( 1, -1, -1), vec3(-1, -1, -1), vec3(-1, 1, -1),
+   vec3(1, 1,  0), vec3( 1, -1,  0), vec3(-1, -1,  0), vec3(-1, 1,  0),
+   vec3(1, 0,  1), vec3(-1,  0,  1), vec3( 1,  0, -1), vec3(-1, 0, -1),
+   vec3(0, 1,  1), vec3( 0, -1,  1), vec3( 0, -1, -1), vec3( 0, 1, -1)
+);
+
+uniform float far_plane;
+uniform bool shadows;
+
+struct Light {
+    vec3 Position;
+    vec3 Color;
+    
+    float Linear;
+    float Quadratic;
+    float Radius;
+};
+
+const int NR_LIGHTS = 32;
+uniform Light lights[NR_LIGHTS];
+uniform vec3 viewPos;
+
+float ShadowCalculation(vec3 fragPos, Light pointLight)
+{
+    vec3 fragToLight = fragPos - pointLight.Position;
+    float currentDepth = length(fragToLight);
+    float shadow = 0.0;
+    float bias = 0.15;
+    int samples = 20;
+    float viewDistance = length(viewPos - fragPos);
+    float diskRadius = (1.0 + (viewDistance / far_plane)) / 25.0;
+    for(int i = 0; i < samples; ++i)
+    {
+        float closestDepth = texture(depthMap, fragToLight + gridSamplingDisk[i] * diskRadius).r;
+        closestDepth *= far_plane;   // undo mapping [0;1]
+        if(currentDepth - bias > closestDepth)
+            shadow += 1.0;
+    }
+    shadow /= float(samples);
+    return shadow;
+}
+
+void main()
+{
+    // retrieve data from gbuffer
+    vec3 FragPos = texture(gPosition, TexCoords).rgb;
+    vec3 Normal = texture(gNormal, TexCoords).rgb;
+    vec3 Diffuse = texture(gAlbedoSpec, TexCoords).rgb;
+    float Specular = texture(gAlbedoSpec, TexCoords).a;
+
+    // then calculate lighting as usual
+    vec3 lighting  = Diffuse * 0.1; // hard-coded ambient component
+    vec3 viewDir  = normalize(viewPos - FragPos);
+    for(int i = 0; i < NR_LIGHTS; ++i)
+    {
+        // calculate distance between light source and current fragment
+        float distance = length(lights[i].Position - FragPos);
+        if(distance < lights[i].Radius)
+        {
+            // diffuse
+            vec3 lightDir = normalize(lights[i].Position - FragPos);
+            vec3 diffuse = max(dot(Normal, lightDir), 0.0) * Diffuse * lights[i].Color;
+            // specular
+            vec3 halfwayDir = normalize(lightDir + viewDir);  
+            float spec = pow(max(dot(Normal, halfwayDir), 0.0), 32.0);
+            vec3 specular = lights[i].Color * spec * Specular;
+            // attenuation
+            float attenuation = 1.0 / (1.0 + lights[i].Linear * distance + lights[i].Quadratic * distance * distance);
+            diffuse *= attenuation;
+            specular *= attenuation;
+            float shadow = shadows ? ShadowCalculation(FragPos, lights[i]) : 0.0;
+            lighting += (1.0 - shadow) * (diffuse + specular);
+        }
+    }
+    FragColor = vec4(lighting, 1.0);
+}
+

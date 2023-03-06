@@ -97,18 +97,16 @@ void main()
     vec3 specular = vec3(0.3) * spec;
     //attenuation
     float distance = length(pointLight.position - fs_in.FragPos);
-    float attenuation = 0.666 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
+    float attenuation = 1 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
     ambient *= attenuation;
     diffuse *= attenuation;
     specular *= attenuation;
     // calculate shadow
     float shadow = shadows ? ShadowCalculation(fs_in.FragPos) : 0.0;
 
-    if(shouldDiscard)
-        discard;
     if(color.a < 0.1)
         discard;
 
     // to get a weird effect, put depth before the closing bracket on the left
-    FragColor = vec4(ambient + (1.0 - shadow) * (diffuse + specular) + depth/4, 1.0);
+    FragColor = vec4(ambient + (1.0 - shadow) * (diffuse + specular) + depth/8, 1.0);
 }

@@ -22,6 +22,7 @@ void scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
 void processInput(GLFWwindow *window);
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods);
 unsigned int loadCubemap(vector<std::string> faces);
+void renderQuad();
 
 // settings
 const unsigned int SCR_WIDTH = 1920;
@@ -43,16 +44,6 @@ bool firstMouse = true;
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-struct PointLight {
-    glm::vec3 position;
-    glm::vec3 ambient;
-    glm::vec3 diffuse;
-    glm::vec3 specular;
-
-    float constant;
-    float linear;
-    float quadratic;
-};
 struct ProgramState {
     glm::vec3 clearColor = glm::vec3(0);
     bool ImGuiEnabled = false;
@@ -60,7 +51,6 @@ struct ProgramState {
     bool CameraMouseMovementUpdateEnabled = true;
     glm::vec3 backpackPosition = glm::vec3(0.0f);
     float backpackScale = 1.0f;
-    PointLight pointLight;
     ProgramState()
             : camera(glm::vec3(0.0f, 0.0f, 0.0f)) {}
 
@@ -149,10 +139,10 @@ int main() {
     ImGuiIO &io = ImGui::GetIO();
     (void) io;
 
-
-
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330 core");
+
+    stbi_set_flip_vertically_on_load(false);
 
     // configure global opengl state
     // depth test, blend, face culling
@@ -160,17 +150,21 @@ int main() {
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
 
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    //glEnable(GL_BLEND);
+    //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
 
     // build and compile shaders
     // -------------------------
-    Shader ourShader("resources/shaders/2.model_lighting.vs", "resources/shaders/2.model_lighting.fs");
+    Shader shaderGeometryPass("resources/shaders/g_buffer.vs", "resources/shaders/g_buffer.fs");
+    Shader shaderLightingPass("resources/shaders/deferred_shading.vs", "resources/shaders/deferred_shading.fs");
+    Shader shaderLightBox("resources/shaders/deferred_light_box.vs", "resources/shaders/deferred_light_box.fs");
     Shader skyboxShader("resources/shaders/skybox.vs", "resources/shaders/skybox.fs");
     Shader depthShader("resources/shaders/point_shadows.vs", "resources/shaders/point_shadows.fs", "resources/shaders/point_shadows.gs");
+
+    Model butterfly("resources/objects/butterfly/butterfly.obj");
 
     const unsigned int SHADOW_WIDTH = 1024;
     const unsigned int SHADOW_HEIGHT = 1024;
@@ -194,9 +188,71 @@ int main() {
     glReadBuffer(GL_NONE);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    ourShader.use();
-    ourShader.setInt("material.texture_diffuse1", 0);
-    ourShader.setInt("depthMap", 1);
+    unsigned int gBuffer;
+    glGenFramebuffers(1, &gBuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+    unsigned int gPosition, gNormal, gAlbedoSpec;
+    // position color buffer
+    glGenTextures(1, &gPosition);
+    glBindTexture(GL_TEXTURE_2D, gPosition);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gPosition, 0);
+    // normal color buffer
+    glGenTextures(1, &gNormal);
+    glBindTexture(GL_TEXTURE_2D, gNormal);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gNormal, 0);
+    // color + specular color buffer
+    glGenTextures(1, &gAlbedoSpec);
+    glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gAlbedoSpec, 0);
+    // tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
+    unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
+    glDrawBuffers(3, attachments);
+    // create and attach depth buffer (renderbuffer)
+    unsigned int rboDepth;
+    glGenRenderbuffers(1, &rboDepth);
+    glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, SCR_WIDTH, SCR_HEIGHT);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+    // finally check if framebuffer is complete
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "Framebuffer not complete!" << std::endl;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    const unsigned int NR_LIGHTS = 32;
+    std::vector<glm::vec3> lightPositions;
+    std::vector<float> lightRotation;
+    std::vector<glm::vec3> lightColors;
+    srand(13);
+    for (unsigned int i = 0; i < NR_LIGHTS; i++)
+    {
+        // calculate slightly random offsets
+        float xPos = static_cast<float>(((rand() % 100) / 100.0) * 80.0 - 40.0);
+        float yPos = static_cast<float>(((rand() % 100) / 100.0) * 2.0 + 2.0);
+        float zPos = static_cast<float>(((rand() % 100) / 100.0) * 80.0 - 40.0);
+        lightPositions.push_back(glm::vec3(xPos, yPos, zPos));
+        float rot = static_cast<float>((rand() % 360) - 180);
+        lightRotation.push_back(rot);
+        // also calculate random color
+        float rColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5); // between 0.5 and 1.)
+        float gColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5); // between 0.5 and 1.)
+        float bColor = static_cast<float>(((rand() % 100) / 200.0f) + 0.5); // between 0.5 and 1.)
+        lightColors.push_back(glm::vec3(rColor, gColor, bColor));
+    }
+
+    shaderLightingPass.use();
+    shaderLightingPass.setInt("gPosition", 0);
+    shaderLightingPass.setInt("gNormal", 1);
+    shaderLightingPass.setInt("gAlbedoSpec", 2);
+    shaderLightingPass.setInt("depthMap", 3);
 
     float skyboxVertices[] = {
             // positions
@@ -268,8 +324,6 @@ int main() {
 
     // load models
     // -----------
-    stbi_set_flip_vertically_on_load(false);
-
     Model forest("resources/objects/forest/forest.obj");
     forest.SetShaderTextureNamePrefix("material.");
 
@@ -282,42 +336,17 @@ int main() {
     Model shrek("resources/objects/shrek/shrek.obj");
     shrek.SetShaderTextureNamePrefix(".material");
 
-    PointLight& pointLight = programState->pointLight;
-    pointLight.position = programState->camera.Position;
-    pointLight.ambient = glm::vec3(0.4, 0.4, 0.4);
-    pointLight.diffuse = glm::vec3(0.5, 0.5, 0.5);
-    pointLight.specular = glm::vec3(0.5, 0.5, 0.5);
-
-    pointLight.constant = 1.0f;
-    pointLight.linear = 0.48f;
-    pointLight.quadratic = 0.48f;
-
     // draw in wireframe
     //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-    // constants for light flickering
-    int lightOffFrameCount = 0;
-    int flickerOccurrenceFrequency = 16;
-    int flickerFrequency = 1;
-
     // render loop
     // -----------
-    // light position for flicker effect
-    float currentLightPositionY = 2.0f;
-    // shrek model whereabouts
-    float curPosX = 0.0f;
-    float curPosZ = 0.0f;
     while (!glfwWindowShouldClose(window)) {
-        bool shouldDiscard = false;
         // per-frame time logic
         // --------------------
         float currentFrame = glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
-
-        // Is current frame count divisible by frequency?
-        int lightOffCond = (int(currentFrame) % flickerOccurrenceFrequency == 0);
-
         // input
         // -----
         processInput(window);
@@ -332,12 +361,13 @@ int main() {
         float far_plane = 25.0f;
         glm::mat4 shadowProj = glm::perspective(glm::radians(90.0f), (float)SHADOW_WIDTH / (float)SHADOW_HEIGHT, near_plane, far_plane);
         std::vector<glm::mat4> shadowTransforms;
-        shadowTransforms.push_back(shadowProj * glm::lookAt(pointLight.position, pointLight.position + glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
-        shadowTransforms.push_back(shadowProj * glm::lookAt(pointLight.position, pointLight.position + glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
-        shadowTransforms.push_back(shadowProj * glm::lookAt(pointLight.position, pointLight.position + glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
-        shadowTransforms.push_back(shadowProj * glm::lookAt(pointLight.position, pointLight.position + glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f)));
-        shadowTransforms.push_back(shadowProj * glm::lookAt(pointLight.position, pointLight.position + glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
-        shadowTransforms.push_back(shadowProj * glm::lookAt(pointLight.position, pointLight.position + glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
+        glm::vec3 tmp = lightPositions[0];
+        shadowTransforms.push_back(shadowProj * glm::lookAt(tmp, tmp + glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
+        shadowTransforms.push_back(shadowProj * glm::lookAt(tmp, tmp + glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
+        shadowTransforms.push_back(shadowProj * glm::lookAt(tmp, tmp + glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
+        shadowTransforms.push_back(shadowProj * glm::lookAt(tmp, tmp + glm::vec3(0.0f, -1.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f)));
+        shadowTransforms.push_back(shadowProj * glm::lookAt(tmp, tmp + glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
+        shadowTransforms.push_back(shadowProj * glm::lookAt(tmp, tmp + glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, -1.0f, 0.0f)));
 
         // render scene to depth cubemap
         glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
@@ -347,135 +377,139 @@ int main() {
         for (unsigned int i = 0; i < 6; ++i)
             depthShader.setMat4("shadowMatrices[" + std::to_string(i) + "]", shadowTransforms[i]);
         depthShader.setFloat("far_plane", far_plane);
-        depthShader.setVec3("lightPos", pointLight.position);
+        depthShader.setVec3("lightPos", tmp);
 
         // forest model
         glm::mat4 forest_model = glm::mat4(1.0f);
-        forest_model = glm::scale(forest_model, glm::vec3(8.0f, 8.0f, 8.0f));
+        forest_model = glm::scale(forest_model, glm::vec3(10.0f, 10.0f, 10.0f));
         forest_model = glm::translate(forest_model, glm::vec3(0.0f, 0.0f, 0.0f));
-        ourShader.setMat4("model", forest_model);
-        forest.Draw(ourShader);
+        depthShader.setMat4("model", forest_model);
+        forest.Draw(depthShader);
 
         // leaves model
         glCullFace(GL_FRONT);
         glm::mat4 leaves_model = glm::mat4(1.0f);
-        leaves_model = glm::scale(leaves_model, glm::vec3(8.0f, 8.0f, 8.0f));
+        leaves_model = glm::scale(leaves_model, glm::vec3(10.0f, 10.0f, 10.0f));
         leaves_model = glm::translate(leaves_model, glm::vec3(0.0f, 0.0f, 0.0f));
-        ourShader.setMat4("model", leaves_model);
-        leaves.Draw(ourShader);
+        depthShader.setMat4("model", leaves_model);
+        leaves.Draw(depthShader);
         glCullFace(GL_BACK);
 
         // bushes model
         glDisable(GL_CULL_FACE);
         glm::mat4 bushes_model = glm::mat4(1.0f);
-        bushes_model = glm::scale(bushes_model, glm::vec3(8.0f, 8.0f, 8.0f));
+        bushes_model = glm::scale(bushes_model, glm::vec3(10.0f, 10.0f, 10.0f));
         bushes_model = glm::translate(bushes_model, glm::vec3(0.0f, 0.0f, 0.0f));
-        ourShader.setMat4("model", bushes_model);
-        bushes.Draw(ourShader);
+        depthShader.setMat4("model", bushes_model);
+        bushes.Draw(depthShader);
         glEnable(GL_CULL_FACE);
 
         // shrek model
-        if(lightOffCond && lightOffFrameCount < flickerFrequency) {
-            shouldDiscard = true;
-        }
-        ourShader.setBool("shouldDiscard", shouldDiscard);
         glm::mat4 shrek_model = glm::mat4(1.0f);
-
         float camX = programState->camera.Position.x;
         float camZ = programState->camera.Position.z;
-        float tmp1 = camX - curPosX;
-        float tmp2 = camZ - curPosZ;
-        float distance = sqrt(tmp1 * tmp1 + tmp2 * tmp2);
-        if(distance >= 12.0f|| distance <= 5.0f) {
-            curPosX = (float)(rand() % 25 - 12) + camX;
-            curPosZ = (float)(rand() % 25 - 12) + camZ;
+        float curPosX, curPosZ;
+        float dist = sqrt((camX - curPosX)*(camX - curPosX) + (camZ - curPosZ)*(camZ - curPosZ));
+        if(dist <= 4.0f || dist >= 16.0f) {
+            curPosX = (float) (rand() % 25 - 12) + programState->camera.Position.x;
+            curPosZ = (float) (rand() % 25 - 12) + programState->camera.Position.z;
         }
-        shrek_model = glm::inverse(glm::lookAt(glm::vec3(curPosX, 0.1f, curPosZ), programState->camera.Position, glm::vec3(0.0f, 1.0f, 0.0f)));
-        shrek_model = glm::scale(shrek_model, glm::vec3(2.8f, 2.8f, 2.8f));
+        shrek_model = glm::inverse(glm::lookAt(glm::vec3(curPosX, 0.1f, curPosZ), programState->camera.Position, glm::vec3(0.0f, 1.5f, 0.0f)));
+        shrek_model = glm::scale(shrek_model, glm::vec3(3.0f, 3.0f, 3.0f));
         shrek_model = glm::rotate(shrek_model, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, -0.2f));
-        // a **very ugly** way to get a random-looking 'teleportation'
-        if(lightOffFrameCount >= flickerFrequency) {
-            float rng1 = (float)(rand() % 61 - 30);
-            float rng2 = (float)(rand() % 61 - 30);
-            float rng3 = (float)(rand() % 61 - 30);
-            shrek_model = glm::inverse(glm::lookAt(glm::vec3(curPosX + rng1/30, 0.1f + rng2/90, curPosZ + rng3/30), programState->camera.Position, glm::vec3(0.0f, 1.0f, 0.0f)));
-            shrek_model = glm::rotate(shrek_model, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, -0.2f));
-            shrek_model = glm::scale(shrek_model, glm::vec3(2.8f, 2.8f, 2.8f));
-            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng1), glm::vec3(0.25f, 0, 0));
-            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng2), glm::vec3(0, 1.0f, 0));
-            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng3), glm::vec3(0, 0, 0.25f));
-        }
-        ourShader.setMat4("model", shrek_model);
-        shrek.Draw(ourShader);
-
-        shouldDiscard = false;
-        ourShader.setBool("shouldDiscard", shouldDiscard);
-
+        depthShader.setMat4("model", shrek_model);
+        shrek.Draw(depthShader);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        // If lightCond applies light is placed out of reach for this frame.
-        // view/projection transformations
+
         glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
+        glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        ourShader.use();
-        pointLight.position = programState->camera.Position + glm::vec3(cos(currentFrame), 2.0f, sin(currentFrame));
-        if(lightOffCond && lightOffFrameCount < flickerFrequency) {
-            pointLight.position.y = -20.0f;
-            lightOffFrameCount++;
-        }
-        else {
-            pointLight.position.y = currentLightPositionY;
-            lightOffFrameCount = 0;
-        }
-        ourShader.setVec3("pointLight.position", pointLight.position);
-        ourShader.setVec3("pointLight.ambient", pointLight.ambient);
-        ourShader.setVec3("pointLight.diffuse", pointLight.diffuse);
-        ourShader.setVec3("pointLight.specular", pointLight.specular);
-        ourShader.setFloat("pointLight.constant", pointLight.constant);
-        ourShader.setFloat("pointLight.linear", pointLight.linear);
-        ourShader.setFloat("pointLight.quadratic", pointLight.quadratic);
-        ourShader.setVec3("viewPosition", programState->camera.Position);
-        ourShader.setFloat("material.shininess", 32.0f);
-
-        glm::mat4 projection = glm::perspective(glm::radians(programState->camera.Zoom),
-                                                (float) SCR_WIDTH / (float) SCR_HEIGHT, 0.1f, 100.0f);
+        glm::mat4 projection = glm::perspective(glm::radians(programState->camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
         glm::mat4 view = programState->camera.GetViewMatrix();
-
-        ourShader.setMat4("projection", projection);
-        ourShader.setMat4("view", view);
-        ourShader.setInt("blinn", blinn);
-        ourShader.setBool("shadows", shadows);
-        ourShader.setFloat("far_plane", far_plane);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemap);
+        glm::mat4 model = glm::mat4(1.0f);
+        shaderGeometryPass.use();
+        shaderGeometryPass.setMat4("projection", projection);
+        shaderGeometryPass.setMat4("view", view);
 
         // forest model
-        // WARNING! If you delete the next line and only the next line, a cool but creepy effect happens!
-        ourShader.setMat4("model", forest_model);
-        forest.Draw(ourShader);
+        shaderGeometryPass.setMat4("model", forest_model);
+        forest.Draw(shaderGeometryPass);
 
         // leaves model
         glCullFace(GL_FRONT);
-        ourShader.setMat4("model", leaves_model);
-        leaves.Draw(ourShader);
+        shaderGeometryPass.setMat4("model", leaves_model);
+        leaves.Draw(shaderGeometryPass);
         glCullFace(GL_BACK);
 
         //bushes model
         glDisable(GL_CULL_FACE);
-        ourShader.setMat4("model", bushes_model);
-        bushes.Draw(ourShader);
+        shaderGeometryPass.setMat4("model", bushes_model);
+        bushes.Draw(shaderGeometryPass);
         glEnable(GL_CULL_FACE);
 
         // shrek model
-        // WARNING! If you delete the next line and only the next line, a BIG SHREK will appear!
-        if(lightOffCond && lightOffFrameCount < flickerFrequency) {
-            shouldDiscard = true;
+        shaderGeometryPass.setMat4("model", shrek_model);
+        shrek.Draw(shaderGeometryPass);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        shaderLightingPass.use();
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, gPosition);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, gNormal);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
+        shaderLightingPass.setFloat("far_plane", far_plane);
+        shaderLightingPass.setBool("shadows", shadows);
+
+        // send light relevant uniforms
+        for (unsigned int i = 0; i < lightPositions.size(); i++)
+        {
+            shaderLightingPass.setVec3("lights[" + std::to_string(i) + "].Position", lightPositions[i]);
+            shaderLightingPass.setVec3("lights[" + std::to_string(i) + "].Color", lightColors[i]);
+            // update attenuation parameters and calculate radius
+            const float constant = 1.0f; // note that we don't send this to the shader, we assume it is always 1.0 (in our case)
+            const float linear = 0.7f;
+            const float quadratic = 1.8f;
+            shaderLightingPass.setFloat("lights[" + std::to_string(i) + "].Linear", linear);
+            shaderLightingPass.setFloat("lights[" + std::to_string(i) + "].Quadratic", quadratic);
+            // then calculate radius of light volume/sphere
+            const float maxBrightness = std::fmaxf(std::fmaxf(lightColors[i].r, lightColors[i].g), lightColors[i].b);
+            float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
+            shaderLightingPass.setFloat("lights[" + std::to_string(i) + "].Radius", radius);
         }
-        ourShader.setBool("shouldDiscard", shouldDiscard);
-        ourShader.setMat4("model", shrek_model);
-        shrek.Draw(ourShader);
-        shouldDiscard = false;
-        ourShader.setBool("shouldDiscard", shouldDiscard);
+        shaderLightingPass.setVec3("viewPos", programState->camera.Position);
+        // finally render quad
+        renderQuad();
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // write to default framebuffer
+        // blit to default framebuffer. Note that this may or may not work as the internal formats of both the FBO and default framebuffer have to match.
+        // the internal formats are implementation defined. This works on all of my systems, but if it doesn't on yours you'll likely have to write to the
+        // depth buffer in another shader stage (or somehow see to match the default framebuffer's internal format with the FBO's internal format).
+        glBlitFramebuffer(0, 0, SCR_WIDTH, SCR_HEIGHT, 0, 0, SCR_WIDTH, SCR_HEIGHT, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        shaderLightBox.use();
+        shaderLightBox.setMat4("projection", projection);
+        shaderLightBox.setMat4("view", view);
+        for (unsigned int i = 0; i < lightPositions.size(); i++)
+        {
+            glDisable(GL_CULL_FACE);
+            model = glm::mat4(1.0f);
+            model = glm::translate(model, lightPositions[i]);
+            model = glm::scale(model, glm::vec3(0.2f));
+            model = glm::rotate(model, lightRotation[i], glm::vec3(0.2f, 1.0f, 0.2f));
+            shaderLightBox.setMat4("model", model);
+            shaderLightBox.setVec3("lightColor", lightColors[i]);
+            butterfly.Draw(shaderLightBox);
+            glEnable(GL_CULL_FACE);
+        }
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemap);
 
         // skybox
         glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
@@ -513,7 +547,36 @@ int main() {
     glfwTerminate();
     return 0;
 }
-
+// renderQuad() renders a 1x1 XY quad in NDC
+// -----------------------------------------
+unsigned int quadVAO = 0;
+unsigned int quadVBO;
+void renderQuad()
+{
+    if (quadVAO == 0)
+    {
+        float quadVertices[] = {
+                // positions        // texture Coords
+                -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+                -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+                1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+                1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+        };
+        // setup plane VAO
+        glGenVertexArrays(1, &quadVAO);
+        glGenBuffers(1, &quadVBO);
+        glBindVertexArray(quadVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    }
+    glBindVertexArray(quadVAO);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindVertexArray(0);
+}
 // process all input: query GLFW whether relevant keys are pressed/released this frame and react accordingly
 // ---------------------------------------------------------------------------------------------------------
 void processInput(GLFWwindow *window) {
@@ -597,9 +660,9 @@ void DrawImGui(ProgramState *programState) {
         ImGui::DragFloat3("Backpack position", (float*)&programState->backpackPosition);
         ImGui::DragFloat("Backpack scale", &programState->backpackScale, 0.05, 0.1, 4.0);
 
-        ImGui::DragFloat("pointLight.constant", &programState->pointLight.constant, 0.05, 0.0, 1.0);
-        ImGui::DragFloat("pointLight.linear", &programState->pointLight.linear, 0.05, 0.0, 1.0);
-        ImGui::DragFloat("pointLight.quadratic", &programState->pointLight.quadratic, 0.05, 0.0, 1.0);
+        //ImGui::DragFloat("pointLight.constant", &programState->pointLight.constant, 0.05, 0.0, 1.0);
+        //ImGui::DragFloat("pointLight.linear", &programState->pointLight.linear, 0.05, 0.0, 1.0);
+        //ImGui::DragFloat("pointLight.quadratic", &programState->pointLight.quadratic, 0.05, 0.0, 1.0);
         ImGui::End();
     }
 
