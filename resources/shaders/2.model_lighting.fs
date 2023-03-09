@@ -1,5 +1,6 @@
 #version 330 core
 out vec4 FragColor;
+out vec4 BrightColor;
 
 in VS_OUT {
     vec3 FragPos;
@@ -97,7 +98,7 @@ void main()
     vec3 specular = vec3(0.3) * spec;
     //attenuation
     float distance = length(pointLight.position - fs_in.FragPos);
-    float attenuation = 0.666 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
+    float attenuation = 1 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
     ambient *= attenuation;
     diffuse *= attenuation;
     specular *= attenuation;
@@ -109,6 +110,12 @@ void main()
     if(color.a < 0.1)
         discard;
 
+    // check whether result is higher than some threshold, if so, output as bloom threshold color
+    float brightness = dot(ambient + (diffuse + specular), vec3(0.2126, 0.7152, 0.0722));
+    if(brightness > 1.0)
+        BrightColor = vec4(ambient + (diffuse + specular), 1.0);
+    else
+        BrightColor = vec4(0.0, 0.0, 0.0, 1.0);
     // to get a weird effect, put depth before the closing bracket on the left
-    FragColor = vec4(ambient + (1.0 - shadow) * (diffuse + specular) + depth/4, 1.0);
+    FragColor = vec4(ambient + (1.0 - shadow) * (diffuse + specular) + depth, 1.0);
 }

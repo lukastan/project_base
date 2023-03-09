@@ -22,6 +22,7 @@ void scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
 void processInput(GLFWwindow *window);
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods);
 unsigned int loadCubemap(vector<std::string> faces);
+void renderQuad();
 
 // settings
 const unsigned int SCR_WIDTH = 1920;
@@ -172,6 +173,7 @@ int main() {
     Shader skyboxShader("resources/shaders/skybox.vs", "resources/shaders/skybox.fs");
     Shader depthShader("resources/shaders/point_shadows.vs", "resources/shaders/point_shadows.fs", "resources/shaders/point_shadows.gs");
 
+    // depth
     const unsigned int SHADOW_WIDTH = 1024;
     const unsigned int SHADOW_HEIGHT = 1024;
     unsigned int depthMapFBO;
@@ -282,11 +284,14 @@ int main() {
     Model shrek("resources/objects/shrek/shrek.obj");
     shrek.SetShaderTextureNamePrefix(".material");
 
+    Model vbuck("resources/objects/vbuck/vbuck.obj");
+    vbuck.SetShaderTextureNamePrefix(".material");
+
     PointLight& pointLight = programState->pointLight;
     pointLight.position = programState->camera.Position;
-    pointLight.ambient = glm::vec3(0.4, 0.4, 0.4);
-    pointLight.diffuse = glm::vec3(0.5, 0.5, 0.5);
-    pointLight.specular = glm::vec3(0.5, 0.5, 0.5);
+    pointLight.ambient = glm::vec3(0.5, 0.3, 0.3);
+    pointLight.diffuse = glm::vec3(0.5, 0.3, 0.3);
+    pointLight.specular = glm::vec3(0.5, 0.2, 0.2);
 
     pointLight.constant = 1.0f;
     pointLight.linear = 0.48f;
@@ -303,7 +308,6 @@ int main() {
     // render loop
     // -----------
     // light position for flicker effect
-    float currentLightPositionY = 2.0f;
     // shrek model whereabouts
     float curPosX = 0.0f;
     float curPosZ = 0.0f;
@@ -411,20 +415,28 @@ int main() {
         shouldDiscard = false;
         ourShader.setBool("shouldDiscard", shouldDiscard);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        // vbuck model
+        glm::mat4 vbuck_model = glm::mat4(1.0f);
+        vbuck_model = glm::scale(vbuck_model, glm::vec3(0.1f, 0.1f, 0.1f));
+        vbuck_model = glm::rotate(vbuck_model, glm::radians(100*currentFrame), glm::vec3(0, 1.0f, 0));
+        vbuck_model = glm::translate(vbuck_model, glm::vec3(0.0f, 10.0f, 0.0f));
+        ourShader.setMat4("model", vbuck_model);
+        vbuck.Draw(ourShader);
+
 
         // If lightCond applies light is placed out of reach for this frame.
         // view/projection transformations
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         ourShader.use();
-        pointLight.position = programState->camera.Position + glm::vec3(cos(currentFrame), 2.0f, sin(currentFrame));
+        pointLight.position = glm::vec3(curPosX, 4.5f + cos(currentFrame/4)/4, curPosZ);
         if(lightOffCond && lightOffFrameCount < flickerFrequency) {
             pointLight.position.y = -20.0f;
             lightOffFrameCount++;
         }
         else {
-            pointLight.position.y = currentLightPositionY;
+            pointLight.position.y = 4.5f + cos(currentFrame/4)/4;
             lightOffFrameCount = 0;
         }
         ourShader.setVec3("pointLight.position", pointLight.position);
@@ -448,6 +460,7 @@ int main() {
         ourShader.setFloat("far_plane", far_plane);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_CUBE_MAP, depthCubemap);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         // forest model
         // WARNING! If you delete the next line and only the next line, a cool but creepy effect happens!
@@ -471,11 +484,26 @@ int main() {
         if(lightOffCond && lightOffFrameCount < flickerFrequency) {
             shouldDiscard = true;
         }
+        if(lightOffFrameCount >= flickerFrequency) {
+            float rng1 = (float)(rand() % 61 - 30);
+            float rng2 = (float)(rand() % 61 - 30);
+            float rng3 = (float)(rand() % 61 - 30);
+            shrek_model = glm::inverse(glm::lookAt(glm::vec3(curPosX + rng1/30, 0.1f + rng2/90, curPosZ + rng3/30), programState->camera.Position, glm::vec3(0.0f, 1.0f, 0.0f)));
+            shrek_model = glm::rotate(shrek_model, glm::radians(180.0f), glm::vec3(0.0f, 1.0f, -0.2f));
+            shrek_model = glm::scale(shrek_model, glm::vec3(2.8f, 2.8f, 2.8f));
+            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng1), glm::vec3(0.25f, 0, 0));
+            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng2), glm::vec3(0, 1.0f, 0));
+            shrek_model = glm::rotate(shrek_model, glm::radians((float)rng3), glm::vec3(0, 0, 0.25f));
+        }
         ourShader.setBool("shouldDiscard", shouldDiscard);
         ourShader.setMat4("model", shrek_model);
         shrek.Draw(ourShader);
         shouldDiscard = false;
         ourShader.setBool("shouldDiscard", shouldDiscard);
+
+        //vbuck model
+        ourShader.setMat4("model", vbuck_model);
+        vbuck.Draw(ourShader);
 
         // skybox
         glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
@@ -538,15 +566,6 @@ void processInput(GLFWwindow *window) {
 //    {
 //        blinnKeyPressed = false;
 //    }
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !shadowsKeyPressed)
-    {
-        shadows = !shadows;
-        shadowsKeyPressed = true;
-    }
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE)
-    {
-        shadowsKeyPressed = false;
-    }
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
@@ -659,4 +678,32 @@ unsigned int loadCubemap(vector<std::string> faces)
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
     return textureID;
+}
+unsigned int quadVAO = 0;
+unsigned int quadVBO;
+void renderQuad()
+{
+    if (quadVAO == 0)
+    {
+        float quadVertices[] = {
+                // positions        // texture Coords
+                -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+                -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+                1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+                1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+        };
+        // setup plane VAO
+        glGenVertexArrays(1, &quadVAO);
+        glGenBuffers(1, &quadVBO);
+        glBindVertexArray(quadVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    }
+    glBindVertexArray(quadVAO);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindVertexArray(0);
 }
