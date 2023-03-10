@@ -581,7 +581,6 @@ int main() {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         // forest model
-        // WARNING! If you delete the next line and only the next line, a cool but creepy effect happens!
         ourShader.setMat4("model", forest_model);
         forest.Draw(ourShader);
 
@@ -598,7 +597,6 @@ int main() {
         glEnable(GL_CULL_FACE);
 
         // shrek model
-        // WARNING! If you delete the next line and only the next line, a BIG SHREK will appear!
         if(lightOffCond && lightOffFrameCount < flickerFrequency) {
             shouldDiscard = true;
         }
@@ -631,7 +629,7 @@ int main() {
         ourShader.setMat4("model", vbuck_model5);
         vbuck5.Draw(ourShader);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+//        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 //        // 2. blur bright fragments with two-pass Gaussian Blur
 //        // --------------------------------------------------
 //        bool horizontal = true, first_iteration = true;
