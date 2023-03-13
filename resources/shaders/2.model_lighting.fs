@@ -112,7 +112,7 @@ void main()
         if(i == 0)
             lighting += ambient + (1.0 - shadow) * (diffuse + specular);
         else
-            lighting +=  ambient + 0.333 * (diffuse + specular);
+            lighting += 1.5 * ambient + (diffuse + specular);
     }
 
     // check whether result is higher than some threshold, if so, output as bloom threshold color
@@ -122,10 +122,8 @@ void main()
     else
         BrightColor = vec4(0.0, 0.0, 0.0, 1.0);
 
-    if(shouldDiscard)
-        discard;
-    if(color.a < 0.1)
+    if(color.a < 0.1 || shouldDiscard)
         discard;
     // to get a weird effect, put depth before the closing bracket on the left
-    FragColor = vec4(lighting + depth*2, 1.0);
+    FragColor = vec4(lighting + depth, 1.0);
 }

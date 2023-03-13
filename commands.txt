@@ -1,0 +1,11 @@
+WASD - movement
+mouse move - camera turn
+mouse scroll - zoom in/out
+SPACE - shadows on/off
+// note: shadows exclusively and intendedly come from the light above Shrek, no other light casts a shadow
+B - blinn on/off
+
+// unfinished
+ENTER - bloom on/off
+Q - less bloom exposure
+E - more bloom exposure

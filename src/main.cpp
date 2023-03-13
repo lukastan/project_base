@@ -27,9 +27,9 @@ void renderQuad();
 // settings
 const unsigned int SCR_WIDTH = 1920;
 const unsigned int SCR_HEIGHT = 1080;
-// blinn is true and the non-blinn option is disabled in processInput
+// blinn
 bool blinn = true;
-//bool blinnKeyPressed = false;
+bool blinnKeyPressed = false;
 // shadows
 bool shadows = true;
 bool shadowsKeyPressed = false;
@@ -37,7 +37,7 @@ bool shadowsKeyPressed = false;
 bool bloom = true;
 bool bloomKeyPressed = false;
 float exposure = 1.0f;
-//lights
+// lights
 unsigned int NR_LIGHTS = 5;
 
 // camera
@@ -104,7 +104,7 @@ void ProgramState::LoadFromFile(std::string filename) {
 }
 ProgramState *programState;
 
-void DrawImGui(ProgramState *programState);
+void DrawImGui(ProgramState *programState, PointLight *pointLight);
 
 int main() {
     // glfw: initialize and configure
@@ -371,13 +371,13 @@ int main() {
     PointLight pointLights[NR_LIGHTS];
     pointLights[0] = programState->pointLight;
     pointLights[0].position = programState->camera.Position;
-    pointLights[0].ambient = glm::vec3(0.5, 0.3, 0.3);
-    pointLights[0].diffuse = glm::vec3(0.5, 0.3, 0.3);
-    pointLights[0].specular = glm::vec3(0.5, 0.2, 0.2);
+    pointLights[0].ambient = glm::vec3(0.5, 0.4, 0.4);
+    pointLights[0].diffuse = glm::vec3(0.5, 0.4, 0.4);
+    pointLights[0].specular = glm::vec3(0.5, 0.4, 0.4);
 
     pointLights[0].constant = 1.0f;
-    pointLights[0].linear = 0.48f;
-    pointLights[0].quadratic = 0.48f;
+    pointLights[0].linear = 0.25f;
+    pointLights[0].quadratic = 0.25f;
     for(int i=1; i<NR_LIGHTS; i++) {
         pointLights[i].position = vbuckPositions[i];
         pointLights[i].ambient = glm::vec3(0.5, 0.5, 0.5);
@@ -385,8 +385,8 @@ int main() {
         pointLights[i].specular = glm::vec3(0.5, 0.5, 0.5);
 
         pointLights[i].constant = 1.0f;
-        pointLights[i].linear = 0.48f;
-        pointLights[i].quadratic = 0.48f;
+        pointLights[i].linear = 0.75f;
+        pointLights[i].quadratic = 0.75f;
     }
 
     // draw in wireframe
@@ -471,7 +471,7 @@ int main() {
         glEnable(GL_CULL_FACE);
 
         // shrek model
-        if(lightOffCond && lightOffFrameCount < flickerFrequency) {
+        if(lightOffCond) {
             shouldDiscard = true;
         }
         ourShader.setBool("shouldDiscard", shouldDiscard);
@@ -482,9 +482,9 @@ int main() {
         float tmp1 = camX - curPosX;
         float tmp2 = camZ - curPosZ;
         float distance = sqrt(tmp1 * tmp1 + tmp2 * tmp2);
-        if(distance >= 12.0f|| distance <= 5.0f) {
-            curPosX = (float)(rand() % 25 - 12) + camX;
-            curPosZ = (float)(rand() % 25 - 12) + camZ;
+        if (distance >= 12.0f || distance <= 5.0f) {
+            curPosX = (float) (rand() % 25 - 12) + camX;
+            curPosZ = (float) (rand() % 25 - 12) + camZ;
         }
         shrek_model = glm::inverse(glm::lookAt(glm::vec3(curPosX, 0.1f, curPosZ), programState->camera.Position, glm::vec3(0.0f, 1.0f, 0.0f)));
         shrek_model = glm::scale(shrek_model, glm::vec3(2.8f, 2.8f, 2.8f));
@@ -510,31 +510,31 @@ int main() {
         // vbuck models
         glm::mat4 vbuck_model1 = glm::mat4(1.0f);
         vbuck_model1 = glm::translate(vbuck_model1, vbuckPositions[0]);
-        vbuck_model1 = glm::scale(vbuck_model1, glm::vec3(0.1f, 0.1f, 0.1f));
+        vbuck_model1 = glm::scale(vbuck_model1, glm::vec3(0.05f, 0.05f, 0.05f));
         vbuck_model1 = glm::rotate(vbuck_model1, glm::radians(125*currentFrame), glm::vec3(0, 1.0f, 0));
         ourShader.setMat4("model", vbuck_model1);
         vbuck1.Draw(ourShader);
         glm::mat4 vbuck_model2 = glm::mat4(1.0f);
         vbuck_model2 = glm::translate(vbuck_model2, vbuckPositions[1]);
-        vbuck_model2 = glm::scale(vbuck_model2, glm::vec3(0.1f, 0.1f, 0.1f));
+        vbuck_model2 = glm::scale(vbuck_model2, glm::vec3(0.05f, 0.05f, 0.05f));
         vbuck_model2 = glm::rotate(vbuck_model2, glm::radians(125*currentFrame), glm::vec3(0, 1.0f, 0));
         ourShader.setMat4("model", vbuck_model2);
         vbuck2.Draw(ourShader);
         glm::mat4 vbuck_model3 = glm::mat4(1.0f);
         vbuck_model3 = glm::translate(vbuck_model3, vbuckPositions[2]);
-        vbuck_model3 = glm::scale(vbuck_model3, glm::vec3(0.1f, 0.1f, 0.1f));
+        vbuck_model3 = glm::scale(vbuck_model3, glm::vec3(0.05f, 0.05f, 0.05f));
         vbuck_model3 = glm::rotate(vbuck_model3, glm::radians(125*currentFrame), glm::vec3(0, 1.0f, 0));
         ourShader.setMat4("model", vbuck_model3);
         vbuck3.Draw(ourShader);
         glm::mat4 vbuck_model4 = glm::mat4(1.0f);
         vbuck_model4 = glm::translate(vbuck_model4, vbuckPositions[3]);
-        vbuck_model4 = glm::scale(vbuck_model4, glm::vec3(0.1f, 0.1f, 0.1f));
+        vbuck_model4 = glm::scale(vbuck_model4, glm::vec3(0.05f, 0.05f, 0.05f));
         vbuck_model4 = glm::rotate(vbuck_model4, glm::radians(125*currentFrame), glm::vec3(0, 1.0f, 0));
         ourShader.setMat4("model", vbuck_model4);
         vbuck4.Draw(ourShader);
         glm::mat4 vbuck_model5 = glm::mat4(1.0f);
         vbuck_model5 = glm::translate(vbuck_model5, vbuckPositions[4]);
-        vbuck_model5 = glm::scale(vbuck_model5, glm::vec3(0.1f, 0.1f, 0.1f));
+        vbuck_model5 = glm::scale(vbuck_model5, glm::vec3(0.05f, 0.05f, 0.05f));
         vbuck_model5 = glm::rotate(vbuck_model5, glm::radians(125*currentFrame), glm::vec3(0, 1.0f, 0));
         ourShader.setMat4("model", vbuck_model5);
         vbuck5.Draw(ourShader);
@@ -600,6 +600,7 @@ int main() {
         if(lightOffCond && lightOffFrameCount < flickerFrequency) {
             shouldDiscard = true;
         }
+        ourShader.setBool("shouldDiscard", shouldDiscard);
         if(lightOffFrameCount >= flickerFrequency) {
             float rng1 = (float)(rand() % 61 - 30);
             float rng2 = (float)(rand() % 61 - 30);
@@ -611,7 +612,6 @@ int main() {
             shrek_model = glm::rotate(shrek_model, glm::radians((float)rng2), glm::vec3(0, 1.0f, 0));
             shrek_model = glm::rotate(shrek_model, glm::radians((float)rng3), glm::vec3(0, 0, 0.25f));
         }
-        ourShader.setBool("shouldDiscard", shouldDiscard);
         ourShader.setMat4("model", shrek_model);
         shrek.Draw(ourShader);
         shouldDiscard = false;
@@ -676,7 +676,7 @@ int main() {
         glDepthFunc(GL_LESS); // set depth function back to default
 
         if (programState->ImGuiEnabled)
-            DrawImGui(programState);
+            DrawImGui(programState, &pointLights[0]);
 
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------
@@ -713,24 +713,29 @@ void processInput(GLFWwindow *window) {
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         programState->camera.ProcessKeyboard(RIGHT, deltaTime);
     // blinn options
-//    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS && !blinnKeyPressed)
-//    {
-//        blinn = !blinn;
-//        blinnKeyPressed = true;
-//    }
-//    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_RELEASE)
-//    {
-//        blinnKeyPressed = false;
-//    }
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !bloomKeyPressed)
+    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS && !blinnKeyPressed)
+    {
+        blinn = !blinn;
+        blinnKeyPressed = true;
+    }
+    if (glfwGetKey(window, GLFW_KEY_B) == GLFW_RELEASE)
+        blinnKeyPressed = false;
+
+    if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS && !bloomKeyPressed)
     {
         bloom = !bloom;
         bloomKeyPressed = true;
     }
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE)
-    {
+    if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_RELEASE)
         bloomKeyPressed = false;
+
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS && !shadowsKeyPressed)
+    {
+        shadows = !shadows;
+        shadowsKeyPressed = true;
     }
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_RELEASE)
+        shadowsKeyPressed = false;
 
     if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS)
     {
@@ -740,9 +745,7 @@ void processInput(GLFWwindow *window) {
             exposure = 0.0f;
     }
     else if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
-    {
         exposure += 0.001f;
-    }
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes
@@ -778,7 +781,7 @@ void scroll_callback(GLFWwindow *window, double xoffset, double yoffset) {
     programState->camera.ProcessMouseScroll(yoffset);
 }
 
-void DrawImGui(ProgramState *programState) {
+void DrawImGui(ProgramState *programState, PointLight *pointLight) {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -789,13 +792,13 @@ void DrawImGui(ProgramState *programState) {
         ImGui::Begin("Hello window");
         ImGui::Text("Hello text");
         ImGui::SliderFloat("Float slider", &f, 0.0, 1.0);
-        ImGui::ColorEdit3("Background color", (float *) &programState->clearColor);
-        ImGui::DragFloat3("Backpack position", (float*)&programState->backpackPosition);
-        ImGui::DragFloat("Backpack scale", &programState->backpackScale, 0.05, 0.1, 4.0);
+//        ImGui::ColorEdit3("Background color", (float *) &programState->clearColor);
+//        ImGui::DragFloat3("Backpack position", (float*)&programState->backpackPosition);
+//        ImGui::DragFloat("Backpack scale", &programState->backpackScale, 0.05, 0.1, 4.0);
 
-        ImGui::DragFloat("pointLight.constant", &programState->pointLight.constant, 0.05, 0.0, 1.0);
-        ImGui::DragFloat("pointLight.linear", &programState->pointLight.linear, 0.05, 0.0, 1.0);
-        ImGui::DragFloat("pointLight.quadratic", &programState->pointLight.quadratic, 0.05, 0.0, 1.0);
+        ImGui::DragFloat("pointLight.constant", &pointLight->constant, 0.05, 0.0, 1.0);
+        ImGui::DragFloat("pointLight.linear", &pointLight->linear, 0.05, 0.0, 1.0);
+        ImGui::DragFloat("pointLight.quadratic", &pointLight->quadratic, 0.05, 0.0, 1.0);
         ImGui::End();
     }
 
