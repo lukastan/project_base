@@ -27,6 +27,8 @@ void renderQuad();
 // settings
 const unsigned int SCR_WIDTH = 1920;
 const unsigned int SCR_HEIGHT = 1080;
+float moveLightX = 0;
+float moveLightZ = 0;
 // blinn
 bool blinn = true;
 bool blinnKeyPressed = false;
@@ -545,7 +547,7 @@ int main() {
         glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         ourShader.use();
-        pointLights[0].position = glm::vec3(curPosX, 4.5f + cos(currentFrame/4)/4, curPosZ);
+        pointLights[0].position = glm::vec3(curPosX + moveLightX, 4.5f + cos(currentFrame/4)/4 , curPosZ + moveLightZ);
         if(lightOffCond && lightOffFrameCount < flickerFrequency) {
             pointLights[0].position.y = -20.0f;
             lightOffFrameCount++;
@@ -629,24 +631,24 @@ int main() {
         ourShader.setMat4("model", vbuck_model5);
         vbuck5.Draw(ourShader);
 
-//        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-//        // 2. blur bright fragments with two-pass Gaussian Blur
-//        // --------------------------------------------------
-//        bool horizontal = true, first_iteration = true;
-//        unsigned int amount = 10;
-//        shaderBlur.use();
-//        for (unsigned int i = 0; i < amount; i++)
-//        {
-//            glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[horizontal]);
-//            shaderBlur.setInt("horizontal", horizontal);
-//            glBindTexture(GL_TEXTURE_2D, first_iteration ? colorBuffers[1] : pingpongColorbuffers[!horizontal]);  // bind texture of other framebuffer (or scene if first iteration)
-//            renderQuad();
-//            horizontal = !horizontal;
-//            if (first_iteration)
-//                first_iteration = false;
-//        }
-//        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-//
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        // 2. blur bright fragments with two-pass Gaussian Blur
+        // --------------------------------------------------
+        bool horizontal = true, first_iteration = true;
+        unsigned int amount = 10;
+        shaderBlur.use();
+        for (unsigned int i = 0; i < amount; i++)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[horizontal]);
+            shaderBlur.setInt("horizontal", horizontal);
+            glBindTexture(GL_TEXTURE_2D, first_iteration ? colorBuffers[1] : pingpongColorbuffers[!horizontal]);  // bind texture of other framebuffer (or scene if first iteration)
+            renderQuad();
+            horizontal = !horizontal;
+            if (first_iteration)
+                first_iteration = false;
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 //        // 3. now render floating point color buffer to 2D quad and tonemap HDR colors to default framebuffer's (clamped) color range
 //        // --------------------------------------------------------------------------------------------------------------------------
 //        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -746,6 +748,14 @@ void processInput(GLFWwindow *window) {
     }
     else if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS)
         exposure += 0.001f;
+    if(glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS)
+        moveLightX += 0.05f;
+    if(glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS)
+        moveLightX -= 0.05f;
+    if(glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS)
+        moveLightZ += 0.05f;
+    if(glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS)
+        moveLightZ -= 0.05f;
 }
 
 // glfw: whenever the window size changed (by OS or user resize) this callback function executes

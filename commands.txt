@@ -5,6 +5,8 @@ SPACE - shadows on/off
 // note: shadows exclusively and intendedly come from the light above Shrek, no other light casts a shadow
 B - blinn on/off
 
+arrows - move Shrek light on the xz plane
+
 // unfinished
 ENTER - bloom on/off
 Q - less bloom exposure
