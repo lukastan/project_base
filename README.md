@@ -27,7 +27,9 @@
   Shrek: https://sketchfab.com/3d-models/shrek-ff6a111c58c94d328b0880a38b912428
   
   V-buck: https://sketchfab.com/3d-models/fortnite-v-buck-coin-5b9735d047b5462eb8dee9605fc1b46f
+  
+# Link to yt video
+  https://youtu.be/HDKzUBMS-Z0
 
 # Yet to implement
-
-HDR, Bloom
+  HDR, Bloom
